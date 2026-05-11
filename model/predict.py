@@ -1,6 +1,10 @@
 import argparse
 import json
+import os
 from pathlib import Path
+
+os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
 
 import numpy as np
 import tensorflow as tf
@@ -27,7 +31,12 @@ def first_dataset_image() -> Path | None:
 def load_labels() -> list[str]:
     if not CLASS_NAMES_PATH.exists():
         raise FileNotFoundError(f"Class names file not found: {CLASS_NAMES_PATH}")
-    return json.loads(CLASS_NAMES_PATH.read_text(encoding="utf-8"))
+
+    class_names = json.loads(CLASS_NAMES_PATH.read_text(encoding="utf-8"))
+    if not isinstance(class_names, list) or not class_names:
+        raise ValueError("class_names.json must contain a non-empty list.")
+
+    return class_names
 
 
 def predict_image(image_path: Path) -> tuple[str, float, list[tuple[str, float]]]:
@@ -36,6 +45,13 @@ def predict_image(image_path: Path) -> tuple[str, float, list[tuple[str, float]]
 
     class_names = load_labels()
     model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+
+    output_classes = int(model.output_shape[-1])
+    if output_classes != len(class_names):
+        raise ValueError(
+            "Model output classes do not match class_names.json. "
+            f"Model has {output_classes}, labels has {len(class_names)}."
+        )
 
     image = tf.keras.utils.load_img(image_path, target_size=(IMG_SIZE, IMG_SIZE))
     image_array = tf.keras.utils.img_to_array(image)
