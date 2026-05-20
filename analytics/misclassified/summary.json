@@ -1,0 +1,23 @@
+{
+  "total": 2696,
+  "correct": 1948,
+  "misclassified": 748,
+  "copied": 748,
+  "skipped_existing": 0,
+  "confusion_counts": {
+    "Acne_as_Tinea": 101,
+    "Acne_as_Psoriasis": 82,
+    "Acne_as_Vitiligo": 5,
+    "Psoriasis_as_Tinea": 168,
+    "Psoriasis_as_Acne": 26,
+    "Psoriasis_as_Vitiligo": 7,
+    "Tinea_as_Psoriasis": 251,
+    "Tinea_as_Acne": 20,
+    "Tinea_as_Vitiligo": 6,
+    "Vitiligo_as_Tinea": 45,
+    "Vitiligo_as_Acne": 9,
+    "Vitiligo_as_Psoriasis": 28
+  },
+  "output_dir": "C:\\Updated_Project\\analytics\\misclassified",
+  "csv_path": "C:\\Updated_Project\\analytics\\misclassified\\misclassified.csv"
+}

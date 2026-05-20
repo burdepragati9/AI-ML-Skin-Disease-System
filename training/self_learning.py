@@ -15,8 +15,75 @@ from utils.config import (
     INCREMENTAL_TRAINING_EPOCHS,
     MODEL_PATH,
     TRAINING_MAX_ATTEMPTS,
+    REPLAY_SAMPLES_PER_DISEASE,
+    REPLAY_MAX_TOTAL_SAMPLES,
+    REPLAY_SHUFFLE_SEED,
+    CROPPED_DATASET_PATH,
 )
+
+
 from utils.security import image_hash, image_hash_distance, safe_disease_slug, save_optimized_image, sanitize_text
+
+from model.registry_utils import ensure_label_exists, resolve_to_canonical
+
+
+
+def _normalize_for_matching(s: str) -> str:
+    import re
+
+    return re.sub(r"\s+", " ", (s or "").strip()).lower()
+
+
+
+def _build_existing_disease_index(dataset_path: Path) -> dict[str, str]:
+    """Map normalized folder names -> canonical folder names on disk."""
+    index: dict[str, str] = {}
+    if not dataset_path.exists():
+        return index
+    for p in dataset_path.iterdir():
+        if not p.is_dir():
+            continue
+        canonical = p.name
+        index[_normalize_for_matching(canonical)] = canonical
+    return index
+
+
+def _resolve_disease_folder(dataset_path: Path, ai_disease: str, alias_map: dict[str, str] | None = None) -> str | None:
+    """Resolve AI disease label to an existing disease folder (or fall back to sanitized label).
+
+    - First apply alias mapping.
+    - Then try exact normalized folder match.
+    - Then try fuzzy match via SequenceMatcher.
+    - Finally, return a sanitized label (may create new folder).
+    """
+    import difflib
+
+    alias_map = alias_map or {}
+    target = (ai_disease or "").strip()
+    if not target or target.lower() == "unknown":
+        return None
+
+    # Alias mapping (AI->canonical)
+    normalized_target = _normalize_for_matching(target)
+    if normalized_target in alias_map:
+        target = alias_map[normalized_target]
+        normalized_target = _normalize_for_matching(target)
+
+    existing_index = _build_existing_disease_index(dataset_path)
+    if not existing_index:
+        return safe_disease_slug(target)
+
+    if normalized_target in existing_index:
+        return existing_index[normalized_target]
+
+    # Fuzzy: best normalized folder name
+    choices = list(existing_index.keys())
+    best = difflib.get_close_matches(normalized_target, choices, n=1, cutoff=0.72)
+    if best:
+        return existing_index[best[0]]
+
+    return safe_disease_slug(target)
+
 
 
 LOGGER = logging.getLogger("self_learning")
@@ -57,14 +124,25 @@ def save_ai_prediction_for_learning(
     original_name: str = "",
     doctor_id: int | None = None,
 ) -> dict:
-    """Persist only AI-fallback images and queue one-image incremental learning.
+
+    """Persist only AI-fallback images and queue incremental learning.
 
     This function is intentionally called only from the low-confidence ML
-    fallback path in app.py. It stores the image in dataset/<AI disease>/ and
-    queues that exact file for incremental training.
+    fallback path in app.py.
+
+    Per requirements: AI-added images are stored inside CroppedData/<Disease>/
+    and queued for training.
     """
-    disease_name = safe_disease_slug(disease)
+
+    # Resolve AI label -> canonical label (registry is source of truth).
+    canonical = resolve_to_canonical(disease)
+    if not canonical or str(canonical).strip().lower() == "unknown":
+        return {"saved": False, "duplicate": False, "path": None}
+
+    disease_name = ensure_label_exists(canonical)
+
     upload_name = sanitize_text(original_name or "ai_fallback_upload.jpg", 180)
+
     img_hash = image_hash(image)
     duplicate = fetch_one("SELECT id, image_path FROM image_hashes WHERE image_hash = ?", (img_hash,))
     if not duplicate:
@@ -92,9 +170,14 @@ def save_ai_prediction_for_learning(
         )
         return {"saved": False, "duplicate": True, "path": duplicate["image_path"]}
 
+    # Save into the canonical disease folder directly.
+    # Requirement: store AI-added images inside CroppedData/<Disease>/
     target_dir = DATASET_PATH / disease_name
     saved_path = save_optimized_image(image, target_dir, disease_name)
+
+
     prediction_id = execute(
+
         """
         INSERT INTO ai_predictions (
             image_name, image_path, image_hash, predicted_disease, confidence,
@@ -104,6 +187,7 @@ def save_ai_prediction_for_learning(
         """,
         (saved_path.name, str(saved_path), img_hash, disease_name, confidence, doctor_id, utc_now()),
     )
+
     execute(
         """
         INSERT INTO image_hashes (image_hash, image_path, disease, source, created_at)
@@ -173,34 +257,109 @@ def _prepare_model(class_names: list[str]):
     if output_classes == len(class_names):
         return model
 
-    # Expands only the classifier head for newly discovered labels while keeping
-    # learned feature layers intact; this avoids a full retrain from scratch.
+    # Rebuild classifier head deterministically and copy existing head weights/bias.
+    # IMPORTANT: we must copy by (input_dim -> units) exact shape, and keep existing
+    # class slots in the same order as `class_names`.
     penultimate = model.layers[-2].output
-    new_output = keras.layers.Dense(len(class_names), activation="softmax", name="incremental_classifier")(penultimate)
+
+    old_head_layer = model.layers[-1]
+    old_weights = old_head_layer.get_weights()
+    if not old_weights or len(old_weights) != 2:
+        raise ValueError("Existing model head weights not found; cannot do incremental expansion safely.")
+
+    old_W, old_b = old_weights
+
+    new_output = keras.layers.Dense(
+        len(class_names),
+        activation="softmax",
+        name=old_head_layer.name,
+    )(penultimate)
     expanded = keras.Model(model.input, new_output)
+
+    # Freeze backbone
     for layer in expanded.layers[:-1]:
         layer.trainable = False
-    if model.layers[-1].get_weights():
-        old_weights, old_bias = model.layers[-1].get_weights()
-        new_weights, new_bias = expanded.layers[-1].get_weights()
-        keep = min(output_classes, len(class_names), old_weights.shape[1])
-        new_weights[:, :keep] = old_weights[:, :keep]
-        new_bias[:keep] = old_bias[:keep]
-        expanded.layers[-1].set_weights([new_weights, new_bias])
+
+    # Copy weights into expanded head (only when output grew)
+    new_head_layer = expanded.layers[-1]
+    new_W, new_b = new_head_layer.get_weights()
+
+    # Expected shapes:
+    # old_W: (feature_dim, output_classes)
+    # new_W: (feature_dim, len(class_names))
+    if old_W.shape[0] != new_W.shape[0]:
+        raise ValueError(
+            f"Head feature dim mismatch: old {old_W.shape} new {new_W.shape}"
+        )
+
+    # Critical: do NOT assume the first N columns correspond to the same labels
+    # unless class index mapping is stable. Incremental logic relies on stable
+    # class_names ordering (we enforce stable append-only ordering), so this copy
+    # remains safe.
+    keep_classes = min(old_W.shape[1], new_W.shape[1])
+    new_W[:, :keep_classes] = old_W[:, :keep_classes]
+    new_b[:keep_classes] = old_b[:keep_classes]
+    new_head_layer.set_weights([new_W, new_b])
+
     return expanded
 
 
-def _dataset_for_job(image_path: str, label_index: int):
+
+
+
+def _dataset_from_paths_and_labels(image_paths: list[str], label_indices: list[int], batch_size: int = 8):
     def load(path, label):
         image = tf.io.read_file(path)
         image = tf.image.decode_image(image, channels=3, expand_animations=False)
         image = tf.image.resize(image, (IMG_SIZE, IMG_SIZE))
         image = tf.cast(image, tf.float32)
+
+        # The model contains its own Rescaling layer, so training inputs stay 0..255.
+
         return image, label
 
-    paths = tf.constant([image_path])
-    labels = tf.constant([label_index], dtype=tf.int64)
-    return tf.data.Dataset.from_tensor_slices((paths, labels)).map(load).batch(1)
+    paths = tf.constant(image_paths)
+    labels = tf.constant(label_indices, dtype=tf.int64)
+    ds = tf.data.Dataset.from_tensor_slices((paths, labels)).map(load)
+    return ds.shuffle(max(50, len(image_paths)), seed=REPLAY_SHUFFLE_SEED, reshuffle_each_iteration=True).batch(batch_size)
+
+
+def _dataset_for_job(image_path: str, label_index: int):
+    # Kept for backward compatibility; new replay-based pipeline uses
+    # _dataset_from_paths_and_labels instead.
+    return _dataset_from_paths_and_labels([image_path], [label_index], batch_size=1)
+
+
+
+def _list_replay_samples_balanced(class_names: list[str], replay_samples_per_disease: int) -> list[tuple[str, int]]:
+
+    """Balanced replay sampling from ALL existing disease folders.
+
+    Returns list of (image_path, label_index).
+    """
+    samples: list[tuple[str, int]] = []
+    cropped_root = CROPPED_DATASET_PATH
+    for disease_name in class_names:
+        disease_dir = cropped_root / disease_name
+        if not disease_dir.exists():
+            continue
+        image_paths = [
+            p
+            for p in disease_dir.iterdir()
+            if p.is_file() and p.suffix.lower() in {".jpg", ".jpeg", ".png"}
+        ]
+        if not image_paths:
+            continue
+
+        # Deterministic-ish shuffle to avoid always picking same few images.
+        rng = np.random.default_rng(REPLAY_SHUFFLE_SEED)
+        rng.shuffle(image_paths)
+
+        chosen = image_paths[: max(0, replay_samples_per_disease)]
+        label_index = class_names.index(disease_name)
+        samples.extend([(str(p), label_index) for p in chosen])
+
+    return samples
 
 
 def _run_job(job: dict) -> None:
@@ -208,15 +367,55 @@ def _run_job(job: dict) -> None:
         "UPDATE training_queue SET status = 'processing', attempts = attempts + 1, updated_at = ? WHERE id = ?",
         (utc_now(), job["id"]),
     )
-    _log("training_started", "started", "Incremental training started.", job["image_path"], job["disease"])
+    _log("training_started", "started", "Incremental training started (replay).", job["image_path"], job["disease"])
     try:
         class_names = _load_class_names()
+        # Ensure class label exists without reordering existing indices.
+        # Critical: do NOT sort here; incremental training head weight copying
+        # assumes existing class indices remain stable.
         if job["disease"] not in class_names:
             class_names.append(job["disease"])
             _save_class_names(class_names)
 
-        label_index = class_names.index(job["disease"])
+        # Runtime sanity checks to prevent silent label-index drift.
+        # If mapping drifts, the model can collapse to a dominant class (e.g., Tinea).
+        if not job.get("disease"):
+            raise ValueError("job.disease is empty")
+
+        new_disease = job["disease"]
+        if new_disease not in class_names:
+            raise ValueError("New disease not found after class_names update")
+
+        # Log current label ordering for debugging.
+        _log(
+            "label_mapping",
+            "checked",
+            f"class_names_order={class_names}",
+            job.get("image_path", ""),
+            new_disease,
+        )
+
+
+        # New AI-corrected image
+
+
+        new_disease = job["disease"]
+        new_label_index = class_names.index(new_disease)
+
+        # Replay samples from old disease folders (balanced)
+        replay_pairs = _list_replay_samples_balanced(class_names, REPLAY_SAMPLES_PER_DISEASE)
+
+        # Cap replay total size to control compute.
+        if REPLAY_MAX_TOTAL_SAMPLES > 0 and len(replay_pairs) > REPLAY_MAX_TOTAL_SAMPLES:
+            # Deterministic trim after shuffle already occurred.
+            replay_pairs = replay_pairs[:REPLAY_MAX_TOTAL_SAMPLES]
+
+        # Final training set: new image + replay
+        image_paths = [job["image_path"]] + [p for (p, _) in replay_pairs]
+        label_indices = [new_label_index] + [li for (_, li) in replay_pairs]
+
         model = _prepare_model(class_names)
+        # Freeze backbone; keep current behavior (avoids large drift)
         for layer in model.layers[:-1]:
             layer.trainable = False
         model.compile(
@@ -224,10 +423,12 @@ def _run_job(job: dict) -> None:
             loss="sparse_categorical_crossentropy",
             metrics=["accuracy"],
         )
-        ds = _dataset_for_job(job["image_path"], label_index)
+
+        ds = _dataset_from_paths_and_labels(image_paths, label_indices, batch_size=8)
         before = float(model.evaluate(ds, verbose=0)[1])
         history = model.fit(ds, epochs=INCREMENTAL_TRAINING_EPOCHS, verbose=0)
         after = float(history.history.get("accuracy", [before])[-1])
+
         model.save(MODEL_PATH)
         execute(
             "UPDATE training_queue SET status = 'completed', trained_at = ?, updated_at = ? WHERE id = ?",
@@ -241,7 +442,8 @@ def _run_job(job: dict) -> None:
             """,
             (job["image_path"],),
         )
-        _log("training_completed", "completed", "Incremental training completed.", job["image_path"], job["disease"], before, after)
+        _log("training_completed", "completed", "Replay incremental training completed.", job["image_path"], job["disease"], before, after)
+
     except Exception as exc:
         next_status = "failed"
         if int(job.get("attempts", 0)) < TRAINING_MAX_ATTEMPTS:

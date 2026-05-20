@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "canonical_labels": [
+    "Acne",
+    "Psoriasis",
+    "Tinea",
+    "Vitiligo",
+    "Contact Dermatitis",
+    "Eczema",
+    "Molluscum Contagiosum",
+    "Melanoma"
+  ],
+  "ai_aliases": {
+    "acne": "Acne",
+    "acne vulgaris": "Acne",
+    "psoriasis": "Psoriasis",
+    "eczema": "Eczema",
+    "atopic dermatitis": "Eczema",
+    "plaque psoriasis": "Psoriasis",
+    "tinea": "Tinea",
+    "fungal infection": "Tinea",
+    "ringworm": "Tinea",
+    "molluscum contagiosum": "Molluscum Contagiosum",
+    "molluscum": "Molluscum Contagiosum",
+    "vitiligo": "Vitiligo",
+    "contact dermatitis": "Contact Dermatitis",
+    "skin allergy": "Contact Dermatitis"
+  }
+}
