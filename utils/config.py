@@ -17,7 +17,13 @@ def env_path(name: str, default: str) -> Path:
 
 MODEL_PATH = env_path("SKIN_MODEL_PATH", "model/skin_model.keras")
 CLASS_NAMES_PATH = env_path("CLASS_NAMES_PATH", "model/class_names.json")
-DATASET_PATH = env_path("SELF_LEARNING_DATASET_PATH", "dataset")
+# Self-learning dataset for incremental AI-added images.
+# Per requirements, AI-added images must be stored inside CroppedData.
+CROPPED_DATASET_PATH = env_path("CROPPED_DATASET_PATH", "CroppedData")
+
+# Backward-compat: keep DATASET_PATH pointing to CroppedData for the existing pipeline.
+DATASET_PATH = CROPPED_DATASET_PATH
+
 DB_PATH = env_path("APP_DB_PATH", "database/app.db")
 UPLOAD_HISTORY_PATH = env_path("UPLOAD_HISTORY_PATH", "history/uploads")
 PROFILE_PHOTO_PATH = env_path("PROFILE_PHOTO_PATH", "history/profile_photos")
@@ -27,7 +33,17 @@ IMAGE_DUPLICATE_HASH_DISTANCE = int(os.getenv("IMAGE_DUPLICATE_HASH_DISTANCE", "
 INCREMENTAL_TRAINING_EPOCHS = int(os.getenv("INCREMENTAL_TRAINING_EPOCHS", "2"))
 TRAINING_MAX_ATTEMPTS = int(os.getenv("TRAINING_MAX_ATTEMPTS", "3"))
 TRAINING_STALE_MINUTES = int(os.getenv("TRAINING_STALE_MINUTES", "30"))
+
+# Replay incremental learning (to avoid catastrophic forgetting)
+# When a new AI-corrected image is added, training will use:
+#   - the new image
+#   - plus balanced replay samples from existing disease folders.
+REPLAY_SAMPLES_PER_DISEASE = int(os.getenv("REPLAY_SAMPLES_PER_DISEASE", "2"))
+REPLAY_MAX_TOTAL_SAMPLES = int(os.getenv("REPLAY_MAX_TOTAL_SAMPLES", "20"))
+REPLAY_SHUFFLE_SEED = int(os.getenv("REPLAY_SHUFFLE_SEED", "123"))
+
 GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "models/gemini-2.5-flash")
+
 GEMINI_API_KEY = (
     os.getenv("GOOGLE_API_KEY")
     or os.getenv("GEMINI_API_KEY")

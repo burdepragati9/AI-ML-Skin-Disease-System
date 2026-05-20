@@ -1,0 +1,138 @@
+{
+  "model_path": "C:\\Updated_Project\\model\\skin_model.keras",
+  "img_size": 160,
+  "classes": [
+    "Acne",
+    "Psoriasis",
+    "Tinea",
+    "Vitiligo"
+  ],
+  "n_samples": 2441,
+  "confusion_matrix": [
+    [
+      386,
+      43,
+      20,
+      1
+    ],
+    [
+      21,
+      570,
+      80,
+      8
+    ],
+    [
+      48,
+      213,
+      409,
+      9
+    ],
+    [
+      21,
+      48,
+      28,
+      536
+    ]
+  ],
+  "true_distribution": {
+    "Acne": 450,
+    "Psoriasis": 679,
+    "Tinea": 679,
+    "Vitiligo": 633
+  },
+  "pred_distribution": {
+    "Acne": 476,
+    "Psoriasis": 874,
+    "Tinea": 537,
+    "Vitiligo": 554
+  },
+  "top1_prob_mean": 0.8135265947999841,
+  "top1_prob_min": 0.3229832351207733,
+  "top1_prob_max": 0.9999979138374329,
+  "entropy_mean": 0.463916636654187,
+  "per_true_class_top1_prob_mean": {
+    "Acne": 0.8407424459854762,
+    "Psoriasis": 0.8179162046782925,
+    "Tinea": 0.7315839202045867,
+    "Vitiligo": 0.877367665746954
+  },
+  "per_class_accuracy": {
+    "Acne": 0.8577777777777778,
+    "Psoriasis": 0.8394698085419735,
+    "Tinea": 0.6023564064801178,
+    "Vitiligo": 0.8467614533965245
+  },
+  "per_class_prediction_percentage": {
+    "Acne": 19.500204834084393,
+    "Psoriasis": 35.80499795165915,
+    "Tinea": 21.999180663662433,
+    "Vitiligo": 22.695616550594018
+  },
+  "per_class_precision": {
+    "Acne": 0.8109243697478974,
+    "Psoriasis": 0.6521739130434775,
+    "Tinea": 0.7616387337057714,
+    "Vitiligo": 0.9675090252707563
+  },
+  "per_class_recall": {
+    "Acne": 0.8577777777777759,
+    "Psoriasis": 0.8394698085419722,
+    "Tinea": 0.6023564064801169,
+    "Vitiligo": 0.8467614533965231
+  },
+  "per_class_f1": {
+    "Acne": 0.8336933045351357,
+    "Psoriasis": 0.7340631036698224,
+    "Tinea": 0.6726973684205583,
+    "Vitiligo": 0.9031171019371587
+  },
+  "macro_avg": {
+    "precision": 0.7980615104419756,
+    "recall": 0.7865913615490969,
+    "f1_score": 0.7858927196406688
+  },
+  "micro_avg": {
+    "precision": 0.7787791888570256,
+    "recall": 0.7787791888570256,
+    "f1_score": 0.7787791888570256
+  },
+  "classification_report": {
+    "accuracy": 0.7787791888570256,
+    "macro_avg": {
+      "precision": 0.7980615104419756,
+      "recall": 0.7865913615490969,
+      "f1_score": 0.7858927196406688
+    },
+    "micro_avg": {
+      "precision": 0.7787791888570256,
+      "recall": 0.7787791888570256,
+      "f1_score": 0.7787791888570256
+    },
+    "per_class": {
+      "Acne": {
+        "precision": 0.8109243697478974,
+        "recall": 0.8577777777777759,
+        "f1_score": 0.8336933045351357,
+        "support": 450
+      },
+      "Psoriasis": {
+        "precision": 0.6521739130434775,
+        "recall": 0.8394698085419722,
+        "f1_score": 0.7340631036698224,
+        "support": 679
+      },
+      "Tinea": {
+        "precision": 0.7616387337057714,
+        "recall": 0.6023564064801169,
+        "f1_score": 0.6726973684205583,
+        "support": 679
+      },
+      "Vitiligo": {
+        "precision": 0.9675090252707563,
+        "recall": 0.8467614533965231,
+        "f1_score": 0.9031171019371587,
+        "support": 633
+      }
+    }
+  }
+}

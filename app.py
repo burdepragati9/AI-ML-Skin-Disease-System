@@ -137,6 +137,7 @@ def preprocess_image(image):
         Image.Resampling.LANCZOS,
     )
 
+    # The model contains its own Rescaling layer, so inference inputs stay 0..255.
     image_array = np.asarray(
         processed_image,
         dtype=np.float32,
@@ -148,6 +149,7 @@ def preprocess_image(image):
     )
 
     return processed_image, image_array
+
 
 # =========================================================
 # FIXED GRADCAM
@@ -373,34 +375,30 @@ def generate_pdf(lines):
 def render_ai_analysis(ai_result: dict | None) -> None:
 
     if not ai_result:
-
         return
 
     st.subheader("Gemini AI Analysis")
 
-    fields = [
-        ("Possible Skin Condition", ai_result.get("disease", "")),
-        ("Common Symptoms", ai_result.get("symptoms", "")),
-        ("Basic Precautions", ai_result.get("precautions", "")),
-        ("Simple Skincare Advice", ai_result.get("skincare_advice", "")),
-        ("Disclaimer", ai_result.get("disclaimer", "")),
-    ]
+    disease = ai_result.get("disease", "")
+    confidence = ai_result.get("confidence", 0)
+    severity = ai_result.get("severity", "")
+    explanation = ai_result.get("explanation", "")
 
-    shown = False
+    if disease:
+        st.markdown(f"**Possible Skin Condition:** {disease}")
 
-    for label, value in fields:
+    if confidence is not None:
+        try:
+            st.markdown(f"**Confidence:** {float(confidence):.1f}%")
+        except Exception:
+            pass
 
-        if value:
+    if severity:
+        st.markdown(f"**Severity:** {severity}")
 
-            st.markdown(f"**{label}:** {value}")
+    if explanation:
+        st.markdown(f"**Explanation:** {explanation}")
 
-            shown = True
-
-    if not shown and ai_result.get("note"):
-
-        st.write(
-            ai_result.get("note", "")
-        )
 
 
 # =========================================================
@@ -919,10 +917,12 @@ for item in reversed(
     st.session_state.prediction_history
 ):
 
-    st.sidebar.write(
-        f"{item['label']} "
-        f"({item['confidence']:.2f}%)"
-    )
+        src = item.get("prediction_source", "")
+        src_suffix = f" • {src}" if src else ""
+        st.sidebar.write(
+            f"{item['label']} ({item['confidence']:.2f}%){src_suffix}"
+        )
+
 
 # =========================================================
 # TITLE
@@ -1013,28 +1013,91 @@ if uploaded_file is not None:
         # =============================================
         with st.spinner("Analyzing image..."):
 
-            scores = model.predict(
+            raw_scores = model.predict(
                 image_array,
                 verbose=0,
             )[0]
 
-        best_index = int(
-            np.argmax(scores)
+        # ---- Runtime validation + confidence calibration (fixes UI inflation) ----
+        raw_scores = np.asarray(raw_scores, dtype=np.float64)
+        if raw_scores.ndim != 1:
+            raise ValueError(f"Model output must be 1D per sample; got shape {raw_scores.shape}")
+
+        # Treat model output as either probabilities (softmax) OR logits.
+        # Heuristic: probabilities should be in [0,1] and sum ~= 1.
+        out_min = float(np.min(raw_scores))
+        out_max = float(np.max(raw_scores))
+        raw_sum = float(np.sum(raw_scores))
+        looks_like_probs = (
+            out_min >= -1e-6
+            and out_max <= 1.0 + 1e-6
+            and abs(raw_sum - 1.0) <= 1e-2
         )
 
-        confidence = float(
-            scores[best_index]
-        ) * 100
+        if looks_like_probs:
+            probs = raw_scores
+            probs_source = "model_probabilities"
+        else:
+            # Convert logits -> softmax probabilities.
+            exp = np.exp(raw_scores - np.max(raw_scores))
+            probs = exp / np.sum(exp)
+            probs_source = "softmax(model_logits)"
 
-        predicted_class = (
-            class_names[best_index]
-        )
+        # Required runtime validation
+        prob_sum = float(np.sum(probs))
+        if not (abs(prob_sum - 1.0) <= 1e-3):
+            raise ValueError(f"Probability validation failed: sum(probs)={prob_sum}")
+
+        if np.any(probs < -1e-6):
+            raise ValueError(f"Probability validation failed: negative probs min={float(np.min(probs))}")
+
+        sorted_indices = np.argsort(probs)[::-1]
+        best_index = int(sorted_indices[0])
+        second_index = int(sorted_indices[1]) if len(sorted_indices) > 1 else best_index
+
+        # Required: softmax_output * 100 only ONCE
+        ml_confidence = float(probs[best_index]) * 100.0
+        predicted_class = class_names[best_index]
+
+        # Top-3 for debug/UI sanity
+        top3_indices = sorted_indices[:3]
+        top3 = [
+            {
+                "idx": int(i),
+                "class": class_names[int(i)],
+                "prob": float(probs[int(i)]),
+                "pct": float(probs[int(i)]) * 100.0,
+            }
+            for i in top3_indices
+        ]
+
+        # Debug logs (console)
+        print("\n[ML DEBUG] raw_scores:", raw_scores)
+        print("[ML DEBUG] probs_source:", probs_source)
+        print("[ML DEBUG] probs (sum=%.6f):" % prob_sum, probs)
+        print("[ML DEBUG] top-3:", top3)
+
+        # Margin sanity check (probability-space)
+        top1_prob = float(probs[best_index])
+        top2_prob = float(probs[second_index])
+        top1_minus_top2 = (top1_prob - top2_prob) * 100.0
+
+        confidence = ml_confidence
+
+        # Debug: print probability sanity summaries
+        probs_max = float(np.max(probs))
+        probs_entropy = float(-np.sum(np.clip(probs, 1e-12, 1.0) * np.log(np.clip(probs, 1e-12, 1.0))))
+        print("[ML DEBUG] probs_max=%.6f entropy=%.6f" % (probs_max, probs_entropy))
+
+        USE_MARGIN_MIN = 18.0  # tuned heuristic
+
 
         final_class = predicted_class
-
         final_confidence = confidence
-
         prediction_source = "ML"
+
+
+
 
         ai_result = None
         ai_fallback_status = "not_used"
@@ -1044,32 +1107,53 @@ if uploaded_file is not None:
         # =============================================
         # AI FALLBACK
         # =============================================
-        if confidence < CONFIDENCE_THRESHOLD:
+        # =============================================
+        # ML vs AI selection (required logic)
+        # Requirement: Strict ML trust logic.
+        # If confidence < 80 OR entropy > 0.9 => do NOT trust ML (use Gemini AI)
+        # =============================================
+        ML_CONFIDENCE_FALLBACK_MIN = 80.0
+        ML_ENTROPY_FALLBACK_MAX = 0.9
+
+        should_use_ml = not (
+            confidence < ML_CONFIDENCE_FALLBACK_MIN
+            or probs_entropy > ML_ENTROPY_FALLBACK_MAX
+        )
+
+        if should_use_ml and confidence > CONFIDENCE_THRESHOLD:
+
+
+
+
+            final_class = predicted_class
+            final_confidence = confidence
+            prediction_source = "ML"
+
+        else:
+
 
             ai_fallback_status = "triggered"
             prediction_source = "AI"
-            final_class = "Unknown"
-            final_confidence = 0.0
 
-            with st.spinner("Low ML confidence. Checking AI fallback..."):
 
-                ai_result = recognize_with_ai(
-                    image
-                )
+            with st.spinner("Predicted by AI due to low ML confidence..."): 
+                ai_result = recognize_with_ai(image)
 
+            ai_disease = (ai_result or {}).get("disease", "Unknown")
+            ai_conf = float((ai_result or {}).get("confidence", 0) or 0.0)
+            ai_explanation = (ai_result or {}).get("explanation", "")
+
+            # Never accept generic AI disease results.
             if (
-                ai_result
-                and ai_result.get("disease")
-                and ai_result["disease"].lower() != "unknown"
-                and ai_result.get("confidence", 0) > 0
+                ai_disease
+                and str(ai_disease).strip().lower() != "unknown"
+                and ai_conf > 0
             ):
 
-                final_class = ai_result["disease"]
+                final_class = ai_disease
+                final_confidence = ai_conf
 
-                final_confidence = float(
-                    ai_result["confidence"]
-                )
-
+                # Save for incremental training.
                 learn_result = save_ai_prediction_for_learning(
                     image,
                     final_class,
@@ -1079,32 +1163,38 @@ if uploaded_file is not None:
                 )
 
                 if learn_result.get("duplicate"):
-
                     st.info("AI-recognized image already exists in the learning dataset.")
                     retraining_status = "duplicate"
-
                 elif learn_result.get("saved"):
-
                     st.success("New AI-recognized image added to the learning queue.")
                     retraining_status = "queued"
 
             else:
-
+                # AI failed; keep ML prediction (as final) instead of Unknown.
+                final_class = predicted_class
+                final_confidence = confidence
+                prediction_source = "ML"
                 retraining_status = "not_queued"
-                st.error(
-                    "ML confidence was low, but AI could not return a confident disease result."
+                ai_result = ai_result or {"disease": "Unknown", "confidence": 0.0, "explanation": ""}
+                st.warning(
+                    "AI fallback triggered, but returned an invalid/unreliable result. Keeping ML prediction."
                 )
+
 
         # =============================================
         # SAVE HISTORY
         # =============================================
-        st.session_state.prediction_history.append(
-            {
-                "label": final_class,
-                "confidence": final_confidence,
-                "time": str(datetime.now()),
-            }
-        )
+        # Save only valid final predictions (final_class is never forced to Unknown anymore).
+        if final_class and str(final_class).strip().lower() not in {"", "unknown"}:
+            st.session_state.prediction_history.append(
+                {
+                    "label": final_class,
+                    "confidence": final_confidence,
+                    "prediction_source": prediction_source,
+                    "time": str(datetime.now()),
+                }
+            )
+
 
         try:
 
@@ -1159,15 +1249,14 @@ if uploaded_file is not None:
         # =============================================
         # LOW CONFIDENCE
         # =============================================
-        if confidence < CONFIDENCE_THRESHOLD:
+        if prediction_source == "AI":
+            st.warning("Low ML confidence. AI fallback used.")
+            render_ai_analysis(ai_result)
+        elif confidence < CONFIDENCE_THRESHOLD:
+            # ML was low confidence but AI failed; show AI diagnostics only if available.
+            st.warning("Low confidence prediction (AI fallback may have failed).")
+            render_ai_analysis(ai_result)
 
-            st.warning(
-                "Low confidence prediction."
-            )
-
-            render_ai_analysis(
-                ai_result
-            )
 
         # =============================================
         # HEATMAP
@@ -1208,31 +1297,7 @@ if uploaded_file is not None:
                 f"Heatmap Error: {str(exc)}"
             )
 
-        # =============================================
-        # ALL SCORES
-        # =============================================
-        st.markdown("---")
 
-        st.subheader(
-            "All Prediction Scores"
-        )
-
-        sorted_indices = np.argsort(
-            scores
-        )[::-1]
-
-        for index in sorted_indices:
-
-            disease = class_names[index]
-
-            score = (
-                float(scores[index]) * 100
-            )
-
-            st.write(
-                f"{disease}: "
-                f"{score:.2f}%"
-            )
 
         # =============================================
         # PDF REPORT
