@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 from database.db import fetch_all, fetch_one
 
 
@@ -33,7 +35,9 @@ def ai_recognized_images(limit: int = 100):
 
 
 def admin_summary() -> dict:
+    """Backwards-compatible admin summary (all-time)."""
     total_ai = fetch_one("SELECT COUNT(*) AS c FROM ai_predictions")["c"]
+
     retrained = fetch_one("SELECT COUNT(*) AS c FROM training_queue WHERE status = 'completed'")["c"]
     common = fetch_one(
         """
@@ -81,3 +85,77 @@ def admin_summary() -> dict:
         "source_counts": source_counts,
         "disease_counts": disease_counts,
     }
+
+
+def _time_window_start(period: str) -> str | None:
+    """Return ISO timestamp lower bound for SQLite comparisons."""
+    now = datetime.utcnow()
+    period_norm = (period or "").strip().lower()
+
+    if period_norm in {"weekly", "week"}:
+        start = now - timedelta(days=7)
+    elif period_norm in {"monthly", "month"}:
+        start = now - timedelta(days=30)
+    elif period_norm in {"yearly", "year"}:
+        start = now - timedelta(days=365)
+    else:
+        return None
+
+    return start.isoformat(timespec="seconds")
+
+
+def admin_prediction_source_counts_by_time(period: str):
+    start_ts = _time_window_start(period)
+
+    where = ""
+    params: list = []
+    if start_ts:
+        where = "WHERE created_at >= ?"
+        params.append(start_ts)
+
+    return fetch_all(
+        f"""
+        SELECT prediction_source, COUNT(*) AS count
+        FROM searches
+        {where}
+        GROUP BY prediction_source
+        ORDER BY count DESC
+        """,
+        tuple(params),
+    )
+
+
+def admin_disease_frequency_by_time(period: str):
+    start_ts = _time_window_start(period)
+
+    where = ""
+    params: list = []
+    if start_ts:
+        where = "WHERE created_at >= ?"
+        params.append(start_ts)
+
+    return fetch_all(
+        f"""
+        SELECT disease, COUNT(*) AS count
+        FROM searches
+        {where}
+        GROUP BY disease
+        ORDER BY count DESC
+        LIMIT 10
+        """,
+        tuple(params),
+    )
+
+
+def admin_summary_by_time(period: str) -> dict:
+    """Admin-only time-filtered analytics snapshot."""
+    disease_counts = admin_disease_frequency_by_time(period)
+    source_counts = admin_prediction_source_counts_by_time(period)
+
+    total_ai = fetch_one("SELECT COUNT(*) AS c FROM ai_predictions")["c"]
+    return {
+        "total_ai": total_ai,
+        "disease_counts": disease_counts,
+        "source_counts": source_counts,
+    }
+
