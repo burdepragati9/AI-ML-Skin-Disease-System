@@ -5,9 +5,11 @@
 
 import json
 import textwrap
+import os
 import unicodedata
 from datetime import datetime
 from pathlib import Path
+
 
 import numpy as np
 import pandas as pd
@@ -19,7 +21,15 @@ from PIL import ImageOps
 
 from fpdf import FPDF
 
-from analytics.admin_analytics import admin_summary, ai_recognized_images, training_status
+from analytics.admin_analytics import (
+    admin_summary,
+    ai_recognized_images,
+    training_status,
+    admin_summary_by_time,
+    admin_prediction_source_counts_by_time,
+    admin_disease_frequency_by_time,
+)
+
 from auth.doctor_auth import (
     assert_can_search,
     authenticate_doctor,
@@ -31,7 +41,8 @@ from auth.doctor_auth import (
     update_doctor_profile,
     usage_for_doctor,
 )
-from database.db import init_db
+from auth.admin_auth import admin_authenticate
+from database.db import fetch_all, fetch_one, init_db
 from history.search_history import doctor_search_stats, recent_searches, record_search
 from training.self_learning import save_ai_prediction_for_learning, start_training_worker
 from utils.ai_recognition import recognize_with_ai
@@ -71,6 +82,20 @@ st.set_page_config(
 )
 
 # =========================================================
+# AUTH VIEW NAV
+# =========================================================
+# Query params are accepted for deep links, but auth sub-section clicks are
+# handled by Streamlit session state.
+_q = st.query_params
+if _q.get("doctor_auth_view"):
+    st.session_state.doctor_auth_view = _q.get("doctor_auth_view")
+    if _q.get("doctor_auth_view") in {"forgot", "reset"}:
+        st.session_state.active_tab = "login"
+if _q.get("admin_auth_view"):
+    st.session_state.admin_auth_view = _q.get("admin_auth_view")
+
+
+# =========================================================
 # BUTTON STYLE
 # =========================================================
 st.markdown("""
@@ -92,6 +117,34 @@ st.markdown("""
     color: white;
 }
 
+/* Auth selector: keep Streamlit's compact radio look like Login / Signup. */
+[data-testid="stRadio"] [role="radiogroup"] {
+    gap: 1rem;
+}
+
+[data-testid="stRadio"] [role="radiogroup"] label {
+    align-items: center;
+    cursor: pointer;
+    color: #111827;
+    font-size: 1rem;
+    font-weight: 400;
+    padding: 0 0.2rem 0.5rem 0;
+}
+
+.auth-links {
+    font-size: 0.82rem;
+    margin-top: 0.35rem;
+}
+
+.auth-links a {
+    color: #1f77ff !important;
+    text-decoration: none;
+}
+
+.auth-links a:hover {
+    text-decoration: underline;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -101,6 +154,10 @@ st.markdown("""
 if "prediction_history" not in st.session_state:
 
     st.session_state.prediction_history = []
+
+if "redirect_to_dashboard" not in st.session_state:
+
+    st.session_state.redirect_to_dashboard = False
 
 # =========================================================
 # LOAD MODEL
@@ -406,6 +463,7 @@ def render_ai_analysis(ai_result: dict | None) -> None:
 # =========================================================
 def current_doctor():
 
+
     doctor_pk = st.session_state.get("doctor_pk")
 
     if not doctor_pk:
@@ -417,147 +475,249 @@ def current_doctor():
     )
 
 
+def set_doctor_auth_view(view: str) -> None:
+    st.session_state.doctor_auth_view = view
+    if view != "reset":
+        st.session_state.pop("password_reset_token", None)
+    try:
+        st.query_params["doctor_auth_view"] = view
+    except Exception:
+        pass
+
+
+def resolve_password_reset_identifier(identifier: str):
+    value = sanitize_text(identifier, 180)
+    if not value:
+        return None
+
+    return fetch_one(
+        """
+        SELECT email
+        FROM doctors
+        WHERE lower(email) = lower(?)
+           OR lower(doctor_id) = lower(?)
+           OR phone = ?
+        LIMIT 1
+        """,
+        (value, value, value),
+    )
+
+
+def render_auth_state_links() -> None:
+    st.markdown(
+        """
+        <div class="auth-links">
+            <a href="?doctor_auth_view=forgot">Forgot Password?</a>
+            <span>&nbsp;|&nbsp;</span>
+            <a href="?doctor_auth_view=reset">Reset Password?</a>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_login_form():
+    if "doctor_auth_view" not in st.session_state:
+        st.session_state.doctor_auth_view = "login"
+
+    if st.session_state.doctor_auth_view == "forgot":
+        st.markdown("**Forgot Password?**")
+        reset_identifier = st.text_input(
+            "Email, Username, or Phone Number",
+            key="forgot_password_email",
+            help="Enter the email, doctor ID, or phone number linked to your doctor account.",
+        )
+        if st.button("Verify User", key="verify_forgot_password_user"):
+            try:
+                if not reset_identifier.strip():
+                    st.error("Email, username, or phone number is required.")
+                else:
+                    doctor_row = resolve_password_reset_identifier(reset_identifier)
+                    token = create_reset_token(doctor_row["email"]) if doctor_row else None
+                    if token:
+                        st.session_state.password_reset_token = token
+                        st.success("User verified. Continue with password reset.")
+                        set_doctor_auth_view("reset")
+                        st.rerun()
+                    else:
+                        st.error("No doctor account found for those details.")
+            except Exception:
+                st.error("Could not verify the user. Please try again.")
+
+        render_auth_state_links()
+
+    elif st.session_state.doctor_auth_view == "reset":
+        st.markdown("**Reset your password**")
+        token = st.session_state.get("password_reset_token")
+        if not token:
+            token = st.text_input(
+                "Reset Token",
+                help="Use the token generated from Forgot Password.",
+                key="reset_password_token",
+            )
+        new_password = st.text_input("New Password", type="password", key="reset_password_new")
+        confirm_password = st.text_input("Confirm New Password", type="password", key="reset_password_confirm")
+
+        if st.button("Reset Password", key="reset_password_submit"):
+            try:
+                if not str(token or "").strip():
+                    st.error("Reset token is required.")
+                elif new_password != confirm_password:
+                    st.error("New password and confirm password do not match.")
+                elif len(new_password or "") < 8:
+                    st.error("Password must be at least 8 characters.")
+                else:
+                    if reset_password(token, new_password):
+                        st.success("Password reset successful. Please login.")
+                        set_doctor_auth_view("login")
+                        st.rerun()
+                    else:
+                        st.error("Invalid or expired reset token.")
+            except Exception:
+                st.error("Password reset failed. Please try again.")
+
+        render_auth_state_links()
+
+    else:
+        with st.form("doctor_login_form"):
+            login_user = st.text_input("Username OR Email OR Phone Number", key="login_user")
+            password = st.text_input("Password", type="password", key="login_password")
+            hospital_name = st.text_input("Hospital Name", key="login_hospital_name")
+            submitted = st.form_submit_button("Login")
+
+        if submitted:
+            try:
+                doctor = authenticate_doctor(login_user, password)
+            except Exception:
+                doctor = None
+
+            if doctor:
+                st.session_state.doctor_pk = doctor["id"]
+                st.session_state.redirect_to_dashboard = True
+                st.session_state.admin_pk = None
+                st.success("Login successful. Redirecting to Doctor Dashboard...")
+                st.rerun()
+
+            try:
+                admin = admin_authenticate(login_user, password)
+            except Exception:
+                admin = None
+
+            if admin:
+                st.session_state.admin_pk = admin["id"]
+                st.session_state.admin_redirect = True
+                st.session_state.doctor_pk = None
+                st.success("Login successful. Redirecting to Admin Dashboard...")
+                st.rerun()
+
+            st.error("Invalid username/email/phone or password.")
+
+        render_auth_state_links()
+
+
+def render_signup_form():
+    with st.form("doctor_signup_form"):
+        full_name = st.text_input("Full Name", key="signup_fullname")
+        email = st.text_input("Email", key="signup_email")
+        doctor_id = st.text_input("Doctor ID", key="signup_doctor_id")
+        specialization = st.text_input("Specialization", key="signup_specialization")
+        phone = st.text_input("Phone Number", key="signup_phone")
+        hospital_name = st.text_input("Hospital Name", key="signup_hospital_name")
+        username = st.text_input("Username", key="signup_username")
+        password = st.text_input("Password", type="password", key="signup_password")
+        confirm_password = st.text_input("Confirm Password", type="password", key="signup_confirm_password")
+        submitted = st.form_submit_button("Create Account")
+
+    if submitted:
+        if password != confirm_password:
+            st.error("Password and Confirm Password must match.")
+            return
+
+        if not full_name.strip() or not email.strip() or not doctor_id.strip() or not specialization.strip() or not hospital_name.strip() or not username.strip():
+            st.error("Full Name, Email, Doctor ID, Specialization, Hospital Name, and Username are required.")
+            return
+
+        profile = {
+            "full_name": full_name,
+            "doctor_id": doctor_id,
+            "specialization": specialization,
+            "clinic_name": hospital_name,
+            "email": email,
+            "phone": phone,
+            "profile_photo": "",
+            "experience": 0,
+            "location": "",
+        }
+
+        try:
+            doctor_pk = create_doctor(profile, password)
+            st.session_state.doctor_pk = doctor_pk
+            st.session_state.admin_pk = None
+            st.session_state.redirect_to_dashboard = True
+            st.success("Signup successful. Redirecting to Doctor Dashboard...")
+            st.rerun()
+        except Exception as exc:
+            st.error(str(exc))
+
+
 def render_doctor_auth():
 
     st.title("Doctor Access")
 
-    login_tab, signup_tab, forgot_tab, reset_tab = st.tabs(
-        [
-            "Login",
-            "Signup",
-            "Forgot Password",
-            "Reset Password",
-        ]
+    if "active_tab" not in st.session_state or st.session_state.active_tab not in {"login", "signup"}:
+        st.session_state.active_tab = "login"
+
+    st.radio(
+        "Authentication",
+        ["login", "signup"],
+        format_func=lambda value: value.title(),
+        horizontal=True,
+        label_visibility="collapsed",
+        key="active_tab",
     )
 
-    with login_tab:
+    active_tab = st.session_state.active_tab
+    if active_tab == "login":
+        render_login_form()
+    elif active_tab == "signup":
+        st.session_state.doctor_auth_view = "login"
+        st.query_params["doctor_auth_view"] = "login"
+        render_signup_form()
 
-        with st.form("doctor_login_form"):
 
-            email = st.text_input("Email")
-
-            password = st.text_input(
-                "Password",
-                type="password",
-            )
-
-            submitted = st.form_submit_button("Login")
-
-        if submitted:
-
-            doctor = authenticate_doctor(
-                email,
-                password,
-            )
-
-            if doctor:
-
-                st.session_state.doctor_pk = doctor["id"]
-
-                st.success("Login successful.")
-
-                st.rerun()
-
-            else:
-
-                st.error("Invalid email or password.")
-
-    with signup_tab:
-
-        with st.form("doctor_signup_form"):
-
-            profile = {
-                "full_name": st.text_input("Full Name"),
-                "doctor_id": st.text_input("Doctor ID"),
-                "specialization": st.text_input("Specialization"),
-                "clinic_name": st.text_input("Hospital/Clinic Name"),
-                "email": st.text_input("Email"),
-                "phone": st.text_input("Phone Number"),
-                "experience": st.number_input("Experience", min_value=0, max_value=80, step=1),
-                "location": st.text_input("Location"),
-            }
-
-            password = st.text_input(
-                "Create Password",
-                type="password",
-            )
-
-            submitted = st.form_submit_button("Create Account")
-
-        if submitted:
-
-            try:
-
-                doctor_pk = create_doctor(
-                    profile,
-                    password,
-                )
-
-                st.session_state.doctor_pk = doctor_pk
-
-                st.success("Doctor account created.")
-
-                st.rerun()
-
-            except Exception as exc:
-
-                st.error(str(exc))
-
-    with forgot_tab:
-
-        email = st.text_input("Registered Email", key="forgot_email")
-
-        if st.button("Generate Reset Token"):
-
-            token = create_reset_token(
-                email
-            )
-
-            if token:
-
-                st.info("Use this reset token within one hour.")
-
-                st.code(token)
-
-            else:
-
-                st.error("No doctor account found for this email.")
-
-    with reset_tab:
-
-        token = st.text_input("Reset Token")
-
-        new_password = st.text_input(
-            "New Password",
-            type="password",
-        )
-
-        if st.button("Reset Password"):
-
-            try:
-
-                if reset_password(
-                    token,
-                    new_password,
-                ):
-
-                    st.success("Password reset successful.")
-
-                else:
-
-                    st.error("Invalid or expired reset token.")
-
-            except Exception as exc:
-
-                st.error(str(exc))
 
 
 # =========================================================
 # DOCTOR DASHBOARD UI
 # =========================================================
+def render_doctor_page_header(title: str, description: str = "") -> None:
+    """Doctor page header.
+
+    Matches the simpler, cleaner layout used elsewhere in the doctor UI.
+    Avoids extra descriptive captions and automatic horizontal separators.
+    """
+    st.markdown(
+        "<div style='margin: 0 0 8px 0; padding: 0; text-align: center;'>"
+        f"<h1 style='margin: 0; font-size: 2rem; line-height: 1.2;'>{title}</h1>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    return
+
+
+
+
 def render_doctor_dashboard(doctor):
 
-    st.title("Doctor Dashboard")
+    render_doctor_page_header(
+        "Doctor Dashboard",
+    )
+
+
+    # Doctor-specific dashboard must not reveal ML-vs-AI origin.
+    # Do not show prediction_source analytics in any doctor UI.
+
 
     if not doctor:
 
@@ -575,6 +735,7 @@ def render_doctor_dashboard(doctor):
         int(doctor["id"])
     )
 
+    # Open metrics row (no boxed containers)
     col1, col2, col3 = st.columns(3)
 
     col1.metric("Total Searches", stats["total"])
@@ -583,60 +744,52 @@ def render_doctor_dashboard(doctor):
 
     col3.metric("Used Searches", usage["used"])
 
+
     if usage["remaining"] <= 0:
 
         st.warning("Free search limit reached. Upgrade to premium to continue searching.")
 
-    chart_col1, chart_col2 = st.columns(2)
+    # Open layout for charts: wider main graph area
+    chart_col1, chart_col2 = st.columns([3, 1])
 
     with chart_col1:
-
         st.subheader("Most Searched Diseases")
+
+        # NOTE: Doctor dashboard must not reveal any AI-vs-ML source info.
 
         disease_df = pd.DataFrame(
             [dict(row) for row in stats["diseases"]]
         )
 
         if disease_df.empty:
-
             st.info("No disease searches yet.")
-
         else:
-
             st.bar_chart(
                 disease_df,
                 x="disease",
                 y="count",
             )
 
+
+
+    # Intentionally do NOT show prediction source analytics on doctor UI.
+    # Doctors must only see final disease results.
+
+    # Side summary (simpler/open)
     with chart_col2:
-
-        st.subheader("AI vs ML Predictions")
-
-        source_df = pd.DataFrame(
-            [dict(row) for row in stats["sources"]]
-        )
-
-        if source_df.empty:
-
-            st.info("No prediction source data yet.")
-
-        else:
-
-            st.bar_chart(
-                source_df,
-                x="prediction_source",
-                y="count",
-            )
+        st.subheader("Recent Activity")
+        st.metric("History Records", stats["total"])
+        st.caption("Open Prediction History for filters and session-level entries.")
 
     st.subheader("Recent Searches")
 
-    disease_filter = st.text_input("Filter by disease")
+    disease_filter = st.text_input("Filter by disease", key="dashboard_disease_filter")
 
     page_number = st.number_input(
         "History Page",
         min_value=1,
         step=1,
+        key="dashboard_history_page",
     )
 
     rows = recent_searches(
@@ -655,7 +808,6 @@ def render_doctor_dashboard(doctor):
                 [
                     "disease",
                     "confidence",
-                    "prediction_source",
                     "created_at",
                 ]
             ],
@@ -676,42 +828,59 @@ def render_doctor_dashboard(doctor):
 
             with image_cols[index % 3]:
 
-                st.image(
-                    row["image_path"],
-                    caption=f"{row['disease']} ({row['count']}x)",
-                    use_container_width=True,
-                )
+                image_path = row["image_path"] if "image_path" in row.keys() else None
+                if image_path and os.path.exists(image_path):
+
+                    st.image(
+                        image_path,
+                        caption=f"{row['disease']} ({row['count']}x)",
+                        use_container_width=True,
+                    )
+
+                else:
+
+                    st.warning(
+                        f"Image not found: {image_path}"
+                    )
 
     else:
 
         st.info("No repeated image searches yet.")
 
-    st.subheader("Profile Management")
+
+
+def render_profile_management(doctor):
+    render_doctor_page_header(
+        "Profile Management",
+    )
 
     with st.form("doctor_profile_form"):
-
         updated_profile = {
             "full_name": st.text_input("Full Name", value=doctor["full_name"]),
             "specialization": st.text_input("Specialization", value=doctor["specialization"]),
-            "clinic_name": st.text_input("Hospital/Clinic Name", value=doctor["clinic_name"] or ""),
+            "clinic_name": st.text_input(
+                "Hospital/Clinic Name", value=doctor["clinic_name"] or ""
+            ),
             "phone": st.text_input("Phone Number", value=doctor["phone"] or ""),
-            "experience": st.number_input("Experience", min_value=0, max_value=80, value=int(doctor["experience"] or 0)),
+            "experience": st.number_input(
+                "Experience",
+                min_value=0,
+                max_value=80,
+                value=int(doctor["experience"] or 0),
+            ),
             "location": st.text_input("Location", value=doctor["location"] or ""),
         }
 
         photo_upload = st.file_uploader(
             "Profile Photo",
-            type=[
-                "jpg",
-                "jpeg",
-                "png",
-            ],
+            type=["jpg", "jpeg", "png"],
             key="profile_photo_upload",
         )
 
         submitted = st.form_submit_button("Save Profile")
 
     if submitted:
+
 
         try:
 
@@ -738,13 +907,465 @@ def render_doctor_dashboard(doctor):
                 updated_profile,
             )
 
-            st.success("Profile updated.")
+            st.success("Profile updated successfully")
 
             st.rerun()
 
         except Exception as exc:
 
-            st.error(str(exc))
+            st.error("Unable to save profile. Please try again.")
+            # Keep original exception details for server logs; UI stays user-friendly.
+            print(f"[DEBUG] Profile save failed: {exc}")
+
+
+
+def render_doctor_reports(doctor):
+    render_doctor_page_header(
+        "Reports",
+        "Doctor-specific analytics based on your prediction and search history.",
+    )
+
+    doctor_id = int(doctor["id"])
+    stats = doctor_search_stats(doctor_id)
+
+    disease_df = pd.DataFrame([dict(row) for row in stats["diseases"]])
+
+    total_searches = int(stats.get("total") or 0)
+    unique_diseases = len(disease_df) if not disease_df.empty else 0
+    most_searched = disease_df.iloc[0]["disease"] if not disease_df.empty else "None"
+
+    # --- Summary cards (compact, equal width) ---
+    card_col1, card_col2, card_col3, card_col4 = st.columns([1, 1, 1, 1])
+    with card_col1:
+        st.metric("Total Searches", f"{total_searches}")
+    with card_col2:
+        st.metric("Unique Diseases", f"{unique_diseases}")
+    with card_col3:
+        st.metric("Most Searched", f"{most_searched}")
+
+    # Optional: average confidence from returned rows (best-effort)
+    # (If created_at/confidence are missing in aggregate helper, keep it safe.)
+    avg_conf = None
+    try:
+        rows = recent_searches(doctor_id, limit=200, offset=0, disease="")
+        confs = []
+        for r in rows:
+            if r["confidence"] is not None:
+                confs.append(float(r["confidence"]))
+        if confs:
+            avg_conf = sum(confs) / len(confs)
+    except Exception:
+        avg_conf = None
+
+    with card_col4:
+        st.metric(
+            "Average Confidence",
+            f"{avg_conf:.1f}%" if avg_conf is not None else "—",
+        )
+
+    st.markdown("---")
+
+    # --- Charts section ---
+    st.subheader("Disease Frequency")
+
+    if disease_df.empty:
+        st.info("No disease frequency data available yet.")
+        return
+
+    # Centered chart usage via container + responsive width
+    chart_col = st.container()
+    with chart_col:
+        st.bar_chart(
+            disease_df,
+            x="disease",
+            y="count",
+            use_container_width=True,
+        )
+
+    # Table-style dataframe below chart
+    st.dataframe(
+        disease_df.rename(
+            columns={
+                "disease": "Disease",
+                "count": "Count",
+            }
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+
+
+def render_prediction_history_page():
+    render_doctor_page_header(
+        "Prediction History",
+    )
+
+    # NOTE: This page is DB-driven (uploads are persisted in searches.image_path).
+    # Do not modify ML/AI logic.
+
+    with st.container():
+        # Vertically stacked controls for professional dashboard alignment
+        if st.button("Reset Filters", key="clear_history_main"):
+            # Only affects filter/session UI; prediction records remain in DB.
+            st.session_state.prediction_history = []
+            st.session_state.history_disease_filter = ""
+            st.session_state.history_page_number = 1
+            st.rerun()
+
+        disease_filter = st.text_input(
+            "Filter by disease",
+            key="history_disease_filter",
+        )
+
+        page_number = st.number_input(
+            "Page",
+            min_value=1,
+            step=1,
+            key="history_page_number",
+        )
+
+
+
+
+    limit = 10
+    offset = (int(page_number) - 1) * limit
+
+    doctor = _doctor
+    if not doctor:
+        st.warning("Please login as a doctor to view prediction history.")
+        return
+
+    rows = recent_searches(
+        int(doctor["id"]),
+        limit=limit,
+        offset=offset,
+        disease=sanitize_text(disease_filter),
+    )
+
+    if not rows:
+        st.info("No prediction history found.")
+        return
+
+    # Table-style compact dashboard rendering
+    table_rows = []
+    for row in rows:
+        disease = row["disease"] if row["disease"] else "Unknown"
+        confidence = row["confidence"]
+        created_at = row["created_at"]
+        image_path = row["image_path"] if row["image_path"] else None
+
+        try:
+            confidence_f = float(confidence) if confidence is not None else 0.0
+        except Exception:
+            confidence_f = 0.0
+
+        timestamp_text = str(created_at) if created_at is not None else ""
+        if isinstance(created_at, (datetime,)):
+            timestamp_text = created_at.strftime("%Y-%m-%d %H:%M:%S")
+
+        has_image = bool(image_path and os.path.exists(image_path))
+        table_rows.append(
+            {
+                "Disease": disease,
+                "Confidence": f"{confidence_f:.2f}%",
+                "Timestamp": timestamp_text,
+                "Image": "✅" if has_image else "—",
+                "image_path": image_path if has_image else None,
+            }
+        )
+
+    st.write(
+        """<div style='margin-top: 6px;'>""",
+        unsafe_allow_html=True,
+    )
+
+    display_df = pd.DataFrame(table_rows)[
+        ["Image", "Disease", "Confidence", "Timestamp"]
+    ]
+
+    st.dataframe(
+        display_df,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    # (Optional) thumbnails are intentionally omitted to keep the page compact.
+
+
+
+
+
+# =========================================================
+# MULTIPLE IMAGES PREDICTION UI
+# =========================================================
+def render_multiple_images_prediction(doctor):
+    """Handle multiple image upload and prediction workflow."""
+    
+    st.title("🖼️ Multiple Images Prediction")
+    st.caption("Upload up to 4 skin images for batch disease analysis.")
+    st.warning("Upload up to 4 images for batch prediction.")
+
+    
+    # Multiple file upload with limit validation
+    uploaded_files = st.file_uploader(
+
+            "Upload Skin Images (Max 4)",
+            type=["jpg", "jpeg", "png"],
+            accept_multiple_files=True,
+        )
+    
+    if uploaded_files:
+        # Validate upload limit
+        if len(uploaded_files) > 4:
+            st.error("Maximum 4 images allowed. Please upload fewer images.")
+            return
+        
+        st.info(f"Uploaded {len(uploaded_files)} image(s)")
+        
+        # Display uploaded images preview
+        st.subheader("Image Previews")
+        preview_cols = st.columns(min(len(uploaded_files), 4))
+        for idx, file in enumerate(uploaded_files):
+            with preview_cols[idx % 4]:
+                try:
+                    image = Image.open(file)
+                    st.image(image, caption=f"Image {idx + 1}", use_container_width=True)
+                except Exception as exc:
+                    st.error(f"Error loading image {idx + 1}: {str(exc)}")
+        
+        # Predict button
+        if st.button("🔍 Predict All Diseases", key="predict_multiple"):
+            active_doctor = current_doctor()
+            
+            # Check search limit for doctors
+            try:
+                if active_doctor:
+                    assert_can_search(int(active_doctor["id"]))
+            except PermissionError as exc:
+                st.error(str(exc))
+                st.warning("Upgrade to premium to continue using doctor searches.")
+                return
+            
+            # Process each image
+            results = []
+            with st.spinner(f"Analyzing {len(uploaded_files)} image(s)..."):
+                for idx, uploaded_file in enumerate(uploaded_files):
+                    try:
+                        # Validate and load image
+                        upload_bytes = validate_image_upload(uploaded_file)
+                        image = image_from_bytes(upload_bytes)
+                        
+                        # Preprocess
+                        processed_image, image_array = preprocess_image(image)
+                        
+                        # ML Prediction
+                        raw_scores = model.predict(image_array, verbose=0)[0]
+                        
+                        # Confidence calibration (same logic as single image)
+                        raw_scores = np.asarray(raw_scores, dtype=np.float64)
+                        if raw_scores.ndim != 1:
+                            raise ValueError(f"Model output must be 1D per sample; got shape {raw_scores.shape}")
+                        
+                        # Check if probabilities or logits
+                        out_min = float(np.min(raw_scores))
+                        out_max = float(np.max(raw_scores))
+                        raw_sum = float(np.sum(raw_scores))
+                        looks_like_probs = (
+                            out_min >= -1e-6
+                            and out_max <= 1.0 + 1e-6
+                            and abs(raw_sum - 1.0) <= 1e-2
+                        )
+                        
+                        if looks_like_probs:
+                            probs = raw_scores
+                        else:
+                            exp = np.exp(raw_scores - np.max(raw_scores))
+                            probs = exp / np.sum(exp)
+                        
+                        # Validation
+                        prob_sum = float(np.sum(probs))
+                        if not (abs(prob_sum - 1.0) <= 1e-3):
+                            raise ValueError(f"Probability validation failed: sum(probs)={prob_sum}")
+                        
+                        if np.any(probs < -1e-6):
+                            raise ValueError(f"Probability validation failed: negative probs min={float(np.min(probs))}")
+                        
+                        sorted_indices = np.argsort(probs)[::-1]
+                        best_index = int(sorted_indices[0])
+                        ml_confidence = float(probs[best_index]) * 100.0
+                        predicted_class = class_names[best_index]
+                        
+                        # Calculate entropy
+                        probs_entropy = float(-np.sum(np.clip(probs, 1e-12, 1.0) * np.log(np.clip(probs, 1e-12, 1.0))))
+                        
+                        # Hybrid ML + AI workflow
+                        ML_CONFIDENCE_FALLBACK_MIN = 80.0
+                        ML_ENTROPY_FALLBACK_MAX = 0.9
+                        
+                        should_use_ml = not (
+                            ml_confidence < ML_CONFIDENCE_FALLBACK_MIN
+                            or probs_entropy > ML_ENTROPY_FALLBACK_MAX
+                        )
+                        
+                        final_class = predicted_class
+                        final_confidence = ml_confidence
+                        prediction_source = "ML"
+                        ai_result = None
+                        ai_fallback_status = "not_used"
+                        retraining_status = "not_required"
+                        
+                        if should_use_ml and ml_confidence > CONFIDENCE_THRESHOLD:
+                            final_class = predicted_class
+                            final_confidence = ml_confidence
+                            prediction_source = "ML"
+                        else:
+                            # AI fallback
+                            ai_fallback_status = "triggered"
+                            prediction_source = "AI"
+                            ai_result = recognize_with_ai(image)
+                            
+                            ai_disease = (ai_result or {}).get("disease", "Unknown")
+                            ai_conf = float((ai_result or {}).get("confidence", 0) or 0.0)
+                            
+                            if (
+                                ai_disease
+                                and str(ai_disease).strip().lower() != "unknown"
+                                and ai_conf > 0
+                            ):
+                                final_class = ai_disease
+                                final_confidence = ai_conf
+                                
+                                # Save for self-learning
+                                learn_result = save_ai_prediction_for_learning(
+                                    image,
+                                    final_class,
+                                    final_confidence,
+                                    getattr(uploaded_file, "name", f"multi_upload_{idx}.jpg"),
+                                    int(active_doctor["id"]) if active_doctor else None,
+                                )
+                                
+                                if learn_result.get("duplicate"):
+                                    retraining_status = "duplicate"
+                                elif learn_result.get("saved"):
+                                    retraining_status = "queued"
+                            else:
+                                # AI failed, keep ML prediction
+                                final_class = predicted_class
+                                final_confidence = ml_confidence
+                                prediction_source = "ML"
+                                retraining_status = "not_queued"
+                                ai_result = ai_result or {"disease": "Unknown", "confidence": 0.0, "explanation": ""}
+                        
+                        # Record search in database
+                        try:
+                            record_search(
+                                int(active_doctor["id"]) if active_doctor else None,
+                                image,
+                                final_class,
+                                final_confidence,
+                                prediction_source,
+                                ai_fallback_status,
+                                retraining_status,
+                            )
+                            
+                            if active_doctor:
+                                consume_search(int(active_doctor["id"]))
+                        except Exception as exc:
+                            print(f"[DEBUG] Search tracking warning for image {idx + 1}: {str(exc)}")
+                        
+                        # Save to session state history
+                        if final_class and str(final_class).strip().lower() not in {"", "unknown"}:
+                            st.session_state.prediction_history.append(
+                                {
+                                    "label": final_class,
+                                    "confidence": final_confidence,
+                                    "prediction_source": prediction_source,
+                                    "time": str(datetime.now()),
+                                }
+                            )
+                        
+                        # Store result
+                        results.append({
+                            "index": idx + 1,
+                            "image": image,
+                            "predicted_disease": final_class,
+                            "confidence": final_confidence,
+                            "prediction_source": prediction_source,
+                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            "ai_result": ai_result,
+                        })
+                        
+                        print(f"[DEBUG] Image {idx + 1} prediction: {final_class} ({final_confidence:.2f}%) via {prediction_source}")
+                        
+                    except Exception as exc:
+                        st.error(f"Error processing image {idx + 1}: {str(exc)}")
+                        print(f"[DEBUG] Error processing image {idx + 1}: {str(exc)}")
+                        results.append({
+                            "index": idx + 1,
+                            "image": None,
+                            "predicted_disease": "Error",
+                            "confidence": 0.0,
+                            "prediction_source": "Error",
+                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            "ai_result": None,
+                        })
+            
+            # Display results in responsive cards
+            st.subheader("Prediction Results")
+
+            if results:
+
+
+                # Summary metrics
+                ml_count = sum(1 for r in results if r["prediction_source"] == "ML")
+                ai_count = sum(1 for r in results if r["prediction_source"] == "AI")
+                
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Total Images", len(results))
+                # Doctor dashboard must not reveal AI-vs-ML origin (hide ML/AI counts)
+                col2.metric("", "")
+                col3.metric("", "")
+
+                
+                st.markdown("---")
+                
+                # Display each result in a card
+                for result in results:
+                    with st.container():
+                        # Card header
+                        st.markdown(f"### Image {result['index']}")
+                        
+                        # Card content in columns
+                        card_col1, card_col2 = st.columns([1, 2])
+                        
+                        with card_col1:
+                            if result["image"]:
+                                st.image(result["image"], caption=f"Image {result['index']}", use_container_width=True)
+                            else:
+                                st.warning("Image not available")
+                        
+                        with card_col2:
+                            st.markdown(f"**Predicted Disease:** {result['predicted_disease']}")
+                            st.markdown(f"**Confidence:** {result['confidence']:.2f}%")
+                            
+                            # Doctor UI must not reveal whether prediction came from AI or ML.
+                            st.markdown(f"**Timestamp:** {result['timestamp']}")
+                            
+                            # Progress bar for confidence
+                            st.progress(min(result['confidence'], 100) / 100)
+                            
+                            # Show AI analysis if available
+                            if result["prediction_source"] == "AI" and result["ai_result"]:
+                                with st.expander("View AI Analysis"):
+                                    render_ai_analysis(result["ai_result"])
+                        
+                        st.markdown("---")
+            else:
+                st.warning("No results to display.")
+    
+    else:
+        st.info("Please upload images to begin prediction.")
 
 
 # =========================================================
@@ -754,21 +1375,36 @@ def render_admin_analytics():
 
     st.title("Admin Analytics")
 
-    summary = admin_summary()
+    # Admin-only time window filtering
+    period = st.selectbox("Time Period", ["Weekly", "Monthly", "Yearly"], index=1)
+    period_key = {
+        "Weekly": "weekly",
+        "Monthly": "monthly",
+        "Yearly": "yearly",
+    }[period]
 
     status = training_status()
 
+
     col1, col2, col3, col4 = st.columns(4)
+
+    # Use time-windowed analytics for admin charts
+    summary = admin_summary_by_time(period_key)
 
     col1.metric("AI Images", summary["total_ai"])
 
-    col2.metric("Retrained Images", summary["retrained"])
+    # Note: retraining count is system-level; keep all-time behavior here
+    col2.metric("Retrained Images", admin_summary()["retrained"])
 
-    common = summary["most_common"]
+    # Most common disease derived from selected time period
+    common = (summary.get("disease_counts") or [])
+    most_common_disease = common[0]["disease"] if common else "None"
+    col3.metric("Most Added Disease", most_common_disease)
 
-    col3.metric("Most Added Disease", common["predicted_disease"] if common else "None")
+    # Accuracy improvement remains system-level (training logs not time-filtered in current helpers)
+    latest_improvement = admin_summary()["accuracy_improvement"]
+    col4.metric("Accuracy Improvement", f"{latest_improvement:.2%}")
 
-    col4.metric("Accuracy Improvement", f"{summary['accuracy_improvement']:.2%}")
 
     st.subheader("Training Status")
 
@@ -846,82 +1482,335 @@ except Exception:
     pass
 
 # =========================================================
-# SIDEBAR
+# AUTH + SESSION + ROLE-BASED SIDEBAR
 # =========================================================
-doctor = current_doctor()
 
-page = st.sidebar.radio(
-    "Navigation",
-    [
-        "Prediction",
-        "Doctor Dashboard",
-        "Doctor Login",
-        "Admin Analytics",
-    ],
-)
 
-if doctor:
+def _is_doctor_logged_in() -> bool:
+    return bool(st.session_state.get("doctor_pk"))
 
-    st.sidebar.success(
-        f"Doctor: {doctor['full_name']}"
+
+def _is_admin_logged_in() -> bool:
+    return bool(st.session_state.get("admin_pk"))
+
+
+def _doctor_session_guard() -> None:
+    # Doctor-only pages should stop if doctor is missing
+    if not _is_doctor_logged_in():
+        st.warning("Please login as a doctor.")
+        render_doctor_auth()
+        st.stop()
+
+
+def _admin_session_guard() -> None:
+    if not _is_admin_logged_in():
+        st.warning("Please login as an admin.")
+        render_admin_auth_ui()
+        st.stop()
+
+
+def handle_doctor_logout() -> None:
+    """Logout doctor session only."""
+    st.session_state.pop("doctor_pk", None)
+    st.session_state.pop("redirect_to_dashboard", None)
+    st.session_state.pop("active_route", None)
+    st.rerun()
+
+
+def handle_admin_logout() -> None:
+    """Logout admin session only."""
+    st.session_state.pop("admin_pk", None)
+    st.session_state.pop("admin_redirect", None)
+    st.rerun()
+
+
+def current_admin():
+    admin_pk = st.session_state.get("admin_pk")
+    if not admin_pk:
+        return None
+    return {"id": admin_pk, "full_name": "Admin"}
+
+
+ADMIN_PAGES = [
+    "Admin Dashboard",
+    "Manage Doctors",
+    "System Monitoring",
+]
+
+DOCTOR_PAGES = [
+    "Doctor Dashboard",
+    "Profile Management",
+    "Image Prediction",
+    "Prediction History",
+    "Reports",
+]
+
+
+
+def render_admin_sidebar() -> str:
+    """Render admin navigation on every admin dashboard page."""
+    st.sidebar.title("Navigation")
+
+    if st.session_state.get("admin_redirect"):
+        st.session_state.admin_redirect = False
+        st.session_state.admin_page = "Admin Dashboard"
+
+    if st.session_state.get("admin_page") not in ADMIN_PAGES:
+        st.session_state.admin_page = "Admin Dashboard"
+
+    return st.sidebar.radio(
+        "Navigation",
+        ADMIN_PAGES,
+        key="admin_page",
     )
 
-    usage = usage_for_doctor(
-        int(doctor["id"])
+
+def render_doctor_sidebar(doctor) -> str:
+    """Render doctor navigation on every doctor dashboard page."""
+    st.sidebar.title("Navigation")
+
+    if st.session_state.get("redirect_to_dashboard"):
+        st.session_state.redirect_to_dashboard = False
+        st.session_state.doctor_page = "Doctor Dashboard"
+
+    if st.session_state.get("doctor_page") not in DOCTOR_PAGES:
+        st.session_state.doctor_page = "Doctor Dashboard"
+
+    page = st.sidebar.radio(
+        "Navigation",
+        DOCTOR_PAGES,
+        key="doctor_page",
     )
 
-    st.sidebar.caption(
-        f"Free searches remaining: {usage['remaining']}"
-    )
+    try:
+        st.sidebar.success(f"Doctor: {doctor['full_name']}")
+        usage = usage_for_doctor(int(doctor["id"]))
+        st.sidebar.caption(f"Free searches remaining: {usage['remaining']}")
+    except Exception as exc:
+        print(f"[DEBUG] usage sidebar error: {exc}")
 
-    if st.sidebar.button("Logout"):
+    return page
 
-        st.session_state.pop(
-            "doctor_pk",
-            None,
-        )
 
-        st.rerun()
+# =========================================================
+# ADMIN AUTH UI
+# =========================================================
 
-if page == "Doctor Login":
+def render_admin_auth_ui():
+    st.title("Admin Access")
 
+    login_tab, signup_tab = st.tabs(["Login", "Signup"])
+
+    with login_tab:
+        with st.container(border=True):
+            if "admin_auth_view" not in st.session_state:
+                st.session_state.admin_auth_view = "login"
+
+            with st.form("admin_login_form"):
+                email = st.text_input("Email")
+                password = st.text_input("Password", type="password")
+                submitted = st.form_submit_button("Login")
+
+            if submitted:
+                admin = admin_authenticate(email, password)
+                if admin:
+                    st.session_state.admin_pk = admin["id"]
+                    st.session_state.admin_redirect = True
+                    st.success("Login successful. Redirecting to Admin Dashboard...")
+                    st.rerun()
+                else:
+                    st.error("Invalid email or password.")
+
+            admin_link_col1, admin_link_col2, _admin_spacer = st.columns([1.2, 1.2, 6])
+            with admin_link_col1:
+                if st.button("Forgot Password", key="admin_forgot_password_link", type="tertiary"):
+                    st.session_state.admin_auth_view = "forgot"
+                    st.rerun()
+            with admin_link_col2:
+                if st.button("Reset Password", key="admin_reset_password_link", type="tertiary"):
+                    st.session_state.admin_auth_view = "reset"
+                    st.rerun()
+
+            if st.session_state.admin_auth_view == "forgot":
+                st.markdown("**Forgot Password?**")
+                st.info("Password reset for admin is not configured in this demo. Contact the system administrator.")
+
+            if st.session_state.admin_auth_view == "reset":
+                st.markdown("**Reset your password**")
+                st.text_input("New Password", type="password", key="admin_reset_password_new")
+                st.text_input("Confirm New Password", type="password", key="admin_reset_password_confirm")
+                if st.button("Reset Password", key="admin_reset_password_submit"):
+                    st.info("Password reset for admin is not configured in this demo. Contact the system administrator.")
+
+
+    with signup_tab:
+        st.info("Admin accounts are configured via environment variables (ADMIN_EMAIL / ADMIN_PASSWORD).")
+
+
+# =========================================================
+# Admin + Doctor route selection
+# =========================================================
+
+# Precompute logged-in roles
+_doctor = current_doctor() if _is_doctor_logged_in() else None
+_admin = current_admin() if _is_admin_logged_in() else None
+
+# Public access: single common login (auto role detection)
+if not _is_doctor_logged_in() and not _is_admin_logged_in():
     render_doctor_auth()
-
     st.stop()
 
-if page == "Doctor Dashboard":
+# If admin logged in, show admin sidebar exclusively
+if _is_admin_logged_in():
+    _admin_session_guard()
 
-    render_doctor_dashboard(
-        doctor
-    )
+    admin_page = render_admin_sidebar()
 
-    st.stop()
+    # Route: ensure Admin Dashboard UI actually renders.
+    # (Previously an early st.stop() caused a blank page after login.)
 
-if page == "Admin Analytics":
+    # Shared admin header actions (keep Logout visible across all admin pages)
+    _left, _right = st.columns([8, 2])
+    with _right:
+        if st.button("Logout"):
+            handle_admin_logout()
 
-    render_admin_analytics()
+    # Render admin pages below
+    if admin_page == "Admin Dashboard":
 
-    st.stop()
+        # Debug: session + routing
 
-st.sidebar.title(
-    "Prediction History"
-)
-
-if st.sidebar.button(
-    "Clear History"
-):
-
-    st.session_state.prediction_history = []
-
-for item in reversed(
-    st.session_state.prediction_history
-):
-
-        src = item.get("prediction_source", "")
-        src_suffix = f" • {src}" if src else ""
-        st.sidebar.write(
-            f"{item['label']} ({item['confidence']:.2f}%){src_suffix}"
+        print(
+            "\n[DEBUG][ADMIN] rendering Admin Dashboard | admin_redirect=",
+            st.session_state.get("admin_redirect"),
+            "admin_pk=",
+            st.session_state.get("admin_pk"),
+            "_admin=",
+            bool(_admin),
+            "admin_page=",
+            admin_page,
+            "selected=",
+            st.session_state.get("active_route"),
         )
+
+        # Pre-check analytics so we can show the required empty-state message
+        # even if the downstream dashboard charts/tables are empty.
+        show_empty_fallback = False
+        try:
+            snapshot = admin_summary_by_time("weekly")
+            show_empty_fallback = not (
+                snapshot.get("disease_counts") or snapshot.get("source_counts")
+            )
+            print(
+                "[DEBUG][ADMIN] analytics empty-state decision=",
+                show_empty_fallback,
+                "weekly_disease_counts=",
+                bool(snapshot.get("disease_counts")),
+                "weekly_source_counts=",
+                bool(snapshot.get("source_counts")),
+            )
+        except Exception as exc:
+            print(f"[DEBUG][ADMIN] analytics empty-state pre-check failed: {exc}")
+
+        # (Top analytics summary row intentionally removed as requested.)
+
+
+        try:
+            # Admin Dashboard is implemented by render_admin_analytics().
+            render_admin_analytics()
+
+            if show_empty_fallback:
+                st.info("No analytics data available")
+
+
+        except Exception as exc:
+            print(f"[DEBUG][ADMIN] Admin Dashboard render failed: {exc}")
+            st.error("Admin Dashboard failed to render. Please try again.")
+
+        st.stop()
+
+
+
+    if admin_page == "Manage Doctors":
+        st.title("Doctor Management")
+        try:
+            docs = fetch_all(
+                """
+                SELECT
+                    d.full_name AS "Doctor Name",
+                    d.email AS "Email",
+                    COUNT(s.id) AS "Total Images Analyzed",
+                    d.doctor_id AS "Doctor ID",
+                    d.specialization AS "Specialization",
+                    d.clinic_name AS "Clinic Name",
+                    d.phone AS "Phone",
+                    d.experience AS "Experience",
+                    d.location AS "Location"
+                FROM doctors d
+                LEFT JOIN searches s ON s.doctor_id = d.id
+                GROUP BY d.id
+                ORDER BY d.created_at DESC
+                LIMIT 50
+                """
+            )
+            if docs:
+                st.dataframe(
+                    pd.DataFrame([dict(d) for d in docs]),
+                    use_container_width=True,
+                )
+            else:
+                st.info("No doctors found.")
+        except Exception as exc:
+            st.error(f"Failed to load doctors: {exc}")
+        st.stop()
+
+    if admin_page == "System Monitoring":
+        st.title("System Monitoring")
+        st.subheader("Training Status")
+        st.json(training_status())
+        st.stop()
+
+# If doctor logged in, show doctor sidebar exclusively
+_doctor_session_guard()
+if _is_doctor_logged_in() and _doctor:
+    render_doctor_sidebar(_doctor)
+    doctor_page = st.session_state.doctor_page
+
+    # Top-right logout button in header area (modern alignment)
+    _left, _right = st.columns([8, 2])
+    with _right:
+        if st.button("Logout"):
+            handle_doctor_logout()
+
+    if doctor_page == "Doctor Dashboard":
+        render_doctor_dashboard(_doctor)
+        st.stop()
+
+    if doctor_page == "Profile Management":
+        render_profile_management(_doctor)
+        st.stop()
+
+    if doctor_page == "Image Prediction":
+        render_multiple_images_prediction(_doctor)
+        st.stop()
+
+
+    if doctor_page == "Prediction History":
+        render_prediction_history_page()
+        st.stop()
+
+    if doctor_page == "Reports":
+        render_doctor_reports(_doctor)
+        st.stop()
+
+# If neither role matched (shouldn't happen), show auth
+render_doctor_auth()
+st.stop()
+
+
+# After login gating, show public prediction history ONLY in the logged-out minimal mode
+# (Requirement: hide dashboard/sidebar options before login; prediction history sidebar is hidden here.)
+
 
 
 # =========================================================
@@ -1185,15 +2074,16 @@ if uploaded_file is not None:
         # SAVE HISTORY
         # =============================================
         # Save only valid final predictions (final_class is never forced to Unknown anymore).
+        # Doctor UI must not expose prediction source origin.
         if final_class and str(final_class).strip().lower() not in {"", "unknown"}:
             st.session_state.prediction_history.append(
                 {
                     "label": final_class,
                     "confidence": final_confidence,
-                    "prediction_source": prediction_source,
                     "time": str(datetime.now()),
                 }
             )
+
 
 
         try:
@@ -1233,11 +2123,11 @@ if uploaded_file is not None:
 
         if prediction_source == "ML":
 
-            st.success("Predicted by ML")
+            st.success("Predicted")
 
         else:
 
-            st.warning("Predicted by AI")
+            st.warning("Predicted")
             st.info(
                 f"ML confidence was low ({ml_confidence:.2f}%), so AI analysis was used."
             )

@@ -13,6 +13,7 @@ from PIL import Image
 IMG_EXTS = {".jpg", ".jpeg", ".png"}
 
 
+
 @dataclass
 class ImageIssue:
     path: str
@@ -144,13 +145,80 @@ def write_report(report: dict, out_json: Path, out_txt: Path | None):
         out_txt.write_text("\n".join(bad_paths), encoding="utf-8")
 
 
+def _isolate_suspicious(report: dict, *, suspicious_root: Path) -> None:
+    """Copy suspicious/duplicate images into a safe folder.
+
+    Non-destructive requirement: we only copy, never delete.
+    """
+    from shutil import copy2
+
+    suspicious_root.mkdir(parents=True, exist_ok=True)
+
+    issues = report.get("issues", [])
+    duplicate_groups = report.get("duplicate_groups", [])
+
+    # 1) isolate issue-marked images
+    for issue_item in issues:
+        try:
+            src = Path(issue_item["path"])
+            issue = str(issue_item.get("issue", "suspicious"))
+        except Exception:
+            continue
+
+        # Keep folder structure: <root>/<issue>/<class>/file
+        # We infer class from parent folder name.
+        disease = src.parent.name
+        dest_dir = suspicious_root / disease / issue
+        dest_dir.mkdir(parents=True, exist_ok=True)
+
+        dest = dest_dir / src.name
+        if not dest.exists():
+            copy2(src, dest)
+
+    # 2) isolate duplicates: mark under duplicates/dup_hash
+    for dg in duplicate_groups:
+        count = dg.get("count", 0)
+        paths = dg.get("paths", [])
+        if count < 2 or not paths:
+            continue
+        for p in paths:
+            src = Path(p)
+            disease = src.parent.name
+            dest_dir = suspicious_root / disease / "duplicates"
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            dest = dest_dir / src.name
+            if not dest.exists():
+                copy2(src, dest)
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Dataset preflight: duplicates + tiny/blurry/corrupt images")
+    parser = argparse.ArgumentParser(
+        description="Dataset preflight: duplicates + tiny/blurry/corrupt images (with optional safe isolation copy)."
+    )
     parser.add_argument("--dataset", type=Path, default=Path("CroppedData"))
     parser.add_argument("--min-side", type=int, default=64, help="min image side (width or height)")
-    parser.add_argument("--blur-var-threshold", type=float, default=250.0, help="variance proxy threshold; lower => blurier")
+    parser.add_argument(
+        "--blur-var-threshold",
+        type=float,
+        default=250.0,
+        help="variance proxy threshold; lower => blurier",
+    )
     parser.add_argument("--out-json", type=Path, default=Path("analytics/dataset_preflight_report.json"))
     parser.add_argument("--out-txt", type=Path, default=Path("analytics/dataset_preflight_bad_paths.txt"))
+
+    # Non-destructive isolation
+    parser.add_argument(
+        "--isolate",
+        action="store_true",
+        help="Copy suspicious images into CroppedData_suspicious/<Class>/<Issue>/... (non-destructive).",
+    )
+    parser.add_argument(
+        "--suspicious-root",
+        type=Path,
+        default=Path("CroppedData_suspicious"),
+        help="Root folder where suspicious images are copied when --isolate is enabled.",
+    )
+
     args = parser.parse_args()
 
     report = scan_dataset(args.dataset, args.min_side, args.blur_var_threshold)
@@ -164,7 +232,13 @@ def main():
     print(f"Duplicates groups: {len(report['duplicate_groups'])}")
     print(f"Report: {args.out_json}")
 
+    if args.isolate:
+        print(f"Isolating suspicious images into: {args.suspicious_root}")
+        _isolate_suspicious(report, suspicious_root=args.suspicious_root)
+        print("Isolation complete (copy only; no deletions performed).")
+
 
 if __name__ == "__main__":
     main()
+
 
