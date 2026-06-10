@@ -1,4 +1,5 @@
 import secrets
+import re
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -9,16 +10,35 @@ from utils.config import FREE_SEARCH_LIMIT
 from utils.security import sanitize_text
 
 
+def _generate_next_doctor_id() -> str:
+    """Create the next doctor_id from the most recently stored doctor_id."""
+    row = fetch_one("SELECT doctor_id FROM doctors ORDER BY id DESC LIMIT 1")
+    if not row or not sanitize_text(row["doctor_id"]):
+        return "DOC001"
+
+    current_id = sanitize_text(row["doctor_id"], 80)
+    match = re.match(r"^(.*?)(\d+)$", current_id)
+    if not match:
+        return "DOC001"
+
+    prefix, number = match.groups()
+    next_number = str(int(number) + 1).zfill(len(number))
+    return f"{prefix}{next_number}"
+
+
 def create_doctor(profile: dict, password: str) -> int:
     if len(password or "") < 8:
         raise ValueError("Password must be at least 8 characters.")
 
-    required = ["full_name", "doctor_id", "specialization", "email"]
+    # Doctor ID is always auto-generated on the backend.
+    # Any user/admin-provided value (if present in profile) must be ignored.
+    required = ["full_name", "specialization", "email"]
     for field in required:
         if not sanitize_text(profile.get(field, "")):
             raise ValueError(f"{field.replace('_', ' ').title()} is required.")
 
     now = utc_now()
+    doctor_id = _generate_next_doctor_id()
     doctor_pk = execute(
         """
         INSERT INTO doctors (
@@ -29,7 +49,7 @@ def create_doctor(profile: dict, password: str) -> int:
         """,
         (
             sanitize_text(profile["full_name"]),
-            sanitize_text(profile["doctor_id"], 80),
+            doctor_id,
             sanitize_text(profile["specialization"]),
             sanitize_text(profile.get("clinic_name", "")),
             sanitize_text(profile["email"].lower(), 180),
@@ -44,6 +64,7 @@ def create_doctor(profile: dict, password: str) -> int:
     )
     ensure_usage_row(doctor_pk)
     return doctor_pk
+
 
 
 def authenticate_doctor(email: str, password: str) -> Optional[dict]:

@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 from database.db import execute, fetch_all, fetch_one, utc_now
 from utils.config import UPLOAD_HISTORY_PATH
@@ -13,6 +14,7 @@ def record_search(
     prediction_source: str,
     ai_fallback_status: str = "not_used",
     retraining_status: str = "not_required",
+    ensemble_metadata: dict[str, Any] | None = None,
 ) -> int:
     disease_name = safe_disease_slug(disease)
     img_hash = image_hash(image)
@@ -21,13 +23,21 @@ def record_search(
         UPLOAD_HISTORY_PATH / disease_name,
         f"search_{disease_name}",
     )
+    ensemble_metadata = ensemble_metadata or {}
+    per_model = ensemble_metadata.get("per_model", {})
     return execute(
         """
         INSERT INTO searches (
             doctor_id, disease, image_path, image_hash, confidence, prediction_source,
-            ai_fallback_status, retraining_status, created_at
+            ai_fallback_status, retraining_status,
+            mobilenet_prediction, mobilenet_confidence,
+            efficientnet_prediction, efficientnet_confidence,
+            densenet_prediction, densenet_confidence,
+            ensemble_prediction, ensemble_confidence,
+            ai_verification_summary, model_agreement, model_predictions_json,
+            created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             doctor_pk,
@@ -38,6 +48,17 @@ def record_search(
             prediction_source,
             ai_fallback_status,
             retraining_status,
+            per_model.get("mobilenetv2", {}).get("prediction"),
+            per_model.get("mobilenetv2", {}).get("confidence"),
+            per_model.get("efficientnetb0", {}).get("prediction"),
+            per_model.get("efficientnetb0", {}).get("confidence"),
+            per_model.get("densenet121", {}).get("prediction"),
+            per_model.get("densenet121", {}).get("confidence"),
+            ensemble_metadata.get("ensemble_prediction"),
+            ensemble_metadata.get("ensemble_confidence"),
+            ensemble_metadata.get("ai_verification_summary"),
+            ensemble_metadata.get("model_agreement"),
+            ensemble_metadata.get("model_predictions_json"),
             utc_now(),
         ),
     )

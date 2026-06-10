@@ -34,6 +34,17 @@ CREATE TABLE IF NOT EXISTS searches (
     prediction_source TEXT NOT NULL,
     ai_fallback_status TEXT NOT NULL DEFAULT 'not_used',
     retraining_status TEXT NOT NULL DEFAULT 'not_required',
+    mobilenet_prediction TEXT,
+    mobilenet_confidence REAL,
+    efficientnet_prediction TEXT,
+    efficientnet_confidence REAL,
+    densenet_prediction TEXT,
+    densenet_confidence REAL,
+    ensemble_prediction TEXT,
+    ensemble_confidence REAL,
+    ai_verification_summary TEXT,
+    model_agreement TEXT,
+    model_predictions_json TEXT,
     created_at TEXT NOT NULL,
     FOREIGN KEY (doctor_id) REFERENCES doctors(id)
 );

@@ -17,6 +17,37 @@ def env_path(name: str, default: str) -> Path:
 
 MODEL_PATH = env_path("SKIN_MODEL_PATH", "model/skin_model.keras")
 CLASS_NAMES_PATH = env_path("CLASS_NAMES_PATH", "model/class_names.json")
+MOBILENET_MODEL_PATH = env_path("MOBILENET_MODEL_PATH", "model/mobilenet_model.keras")
+EFFICIENTNET_MODEL_PATH = env_path("EFFICIENTNET_MODEL_PATH", "model/efficientnet_model.keras")
+DENSENET_MODEL_PATH = env_path("DENSENET_MODEL_PATH", "model/densenet_model.keras")
+
+# Multiple model support
+# Dictionary of model configurations for future extensibility
+# Format: {"model_name": {"path": "path/to/model.keras", "class_names": "path/to/class_names.json", "type": "model_type"}}
+AVAILABLE_MODELS = {
+    "mobilenetv2": {
+        "path": MOBILENET_MODEL_PATH if MOBILENET_MODEL_PATH.exists() else MODEL_PATH,
+        "class_names": CLASS_NAMES_PATH,
+        "type": "mobilenetv2",
+        "priority": 10,
+    },
+    "efficientnetb0": {
+        "path": EFFICIENTNET_MODEL_PATH,
+        "class_names": CLASS_NAMES_PATH,
+        "type": "efficientnetb0",
+        "priority": 20,
+    },
+    "densenet121": {
+        "path": DENSENET_MODEL_PATH,
+        "class_names": CLASS_NAMES_PATH,
+        "type": "densenet121",
+        "priority": 30,
+    },
+}
+ACTIVE_MODEL = os.getenv("ACTIVE_MODEL", "mobilenetv2")
+
+# Multi-model prediction configuration
+ENABLE_MULTI_MODEL_PREDICTION = os.getenv("ENABLE_MULTI_MODEL_PREDICTION", "true").lower() == "true"
 # Self-learning dataset for incremental AI-added images.
 # Per requirements, AI-added images must be stored inside CroppedData.
 CROPPED_DATASET_PATH = env_path("CROPPED_DATASET_PATH", "CroppedData")
@@ -49,3 +80,9 @@ GEMINI_API_KEY = (
     or os.getenv("GEMINI_API_KEY")
     or os.getenv("API_KEY")
 )
+
+# AI Verification Configuration
+# Enable AI-based prediction validation after ML prediction
+ENABLE_AI_VERIFICATION = os.getenv("ENABLE_AI_VERIFICATION", "true").lower() == "true"
+# Confidence threshold for triggering AI verification
+AI_VERIFICATION_THRESHOLD = float(os.getenv("AI_VERIFICATION_THRESHOLD", "70.0"))

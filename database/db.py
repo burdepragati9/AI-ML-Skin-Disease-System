@@ -43,6 +43,17 @@ def _upgrade_existing_schema(conn: sqlite3.Connection) -> None:
         "retraining_status",
         "retraining_status TEXT NOT NULL DEFAULT 'not_required'",
     )
+    _add_column_if_missing(conn, "searches", "mobilenet_prediction", "mobilenet_prediction TEXT")
+    _add_column_if_missing(conn, "searches", "mobilenet_confidence", "mobilenet_confidence REAL")
+    _add_column_if_missing(conn, "searches", "efficientnet_prediction", "efficientnet_prediction TEXT")
+    _add_column_if_missing(conn, "searches", "efficientnet_confidence", "efficientnet_confidence REAL")
+    _add_column_if_missing(conn, "searches", "densenet_prediction", "densenet_prediction TEXT")
+    _add_column_if_missing(conn, "searches", "densenet_confidence", "densenet_confidence REAL")
+    _add_column_if_missing(conn, "searches", "ensemble_prediction", "ensemble_prediction TEXT")
+    _add_column_if_missing(conn, "searches", "ensemble_confidence", "ensemble_confidence REAL")
+    _add_column_if_missing(conn, "searches", "ai_verification_summary", "ai_verification_summary TEXT")
+    _add_column_if_missing(conn, "searches", "model_agreement", "model_agreement TEXT")
+    _add_column_if_missing(conn, "searches", "model_predictions_json", "model_predictions_json TEXT")
     _add_column_if_missing(conn, "ai_predictions", "doctor_id", "doctor_id INTEGER")
     _add_column_if_missing(
         conn,

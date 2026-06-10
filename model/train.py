@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import sys
+import argparse
 from pathlib import Path
 
 # =========================================================
@@ -67,6 +68,22 @@ BATCH_SIZE = 16
 EPOCHS = 20
 
 SEED = 123
+SUPPORTED_ARCHITECTURES = {"mobilenetv2", "efficientnetb0", "densenet121", "resnet50"}
+
+
+def model_paths_for_architecture(architecture: str) -> tuple[Path, Path]:
+    """Return final and checkpoint paths for one trained architecture."""
+    filenames = {
+        "mobilenetv2": "mobilenet_model.keras",
+        "efficientnetb0": "efficientnet_model.keras",
+        "densenet121": "densenet_model.keras",
+        "resnet50": "resnet_model.keras",
+    }
+    if architecture not in filenames:
+        raise ValueError(f"Unsupported architecture: {architecture}")
+    final_path = MODEL_DIR / filenames[architecture]
+    best_path = MODEL_DIR / f"best_{architecture}_training_model.keras"
+    return final_path, best_path
 
 # Fine-tuning (Stage 2)
 # Enabled to reduce long plateau caused by domain shift.
@@ -232,18 +249,38 @@ def unfreeze_last_n_backbone_layers(base_model: tf.keras.Model, n: int) -> None:
         layer.trainable = True
 
 
-def build_model(num_classes: int) -> tuple[keras.Model, tf.keras.Model]:
+def build_model(num_classes: int, architecture: str = "mobilenetv2") -> tuple[keras.Model, tf.keras.Model]:
     """Returns (full model, base_model)."""
-    print("\nLoading MobileNetV2...")
+    architecture = architecture.lower()
+    print(f"\nLoading {architecture}...")
 
-    base_model = tf.keras.applications.MobileNetV2(
-        input_shape=(IMG_SIZE, IMG_SIZE, 3),
-        include_top=False,
-        # Use full MobileNetV2 capacity. Low alpha (e.g. 0.35) can underfit
-        # fine-grained lesion texture differences (Acne vs Psoriasis/Tinea).
-        weights="imagenet",
-        alpha=1.0,
-    )
+    if architecture == "mobilenetv2":
+        base_model = tf.keras.applications.MobileNetV2(
+            input_shape=(IMG_SIZE, IMG_SIZE, 3),
+            include_top=False,
+            weights="imagenet",
+            alpha=1.0,
+        )
+    elif architecture == "efficientnetb0":
+        base_model = tf.keras.applications.EfficientNetB0(
+            input_shape=(IMG_SIZE, IMG_SIZE, 3),
+            include_top=False,
+            weights="imagenet",
+        )
+    elif architecture == "densenet121":
+        base_model = tf.keras.applications.DenseNet121(
+            input_shape=(IMG_SIZE, IMG_SIZE, 3),
+            include_top=False,
+            weights="imagenet",
+        )
+    elif architecture == "resnet50":
+        base_model = tf.keras.applications.ResNet50(
+            input_shape=(IMG_SIZE, IMG_SIZE, 3),
+            include_top=False,
+            weights="imagenet",
+        )
+    else:
+        raise ValueError(f"Unsupported architecture: {architecture}")
 
 
     # ------------------------------------------------------------------
@@ -439,7 +476,11 @@ def _top_confusion_pairs(cm: np.ndarray, class_names: list[str], *, k: int = 5) 
     return pairs[:k]
 
 
-def main():
+def main(architecture: str = "mobilenetv2"):
+    global MODEL_PATH, BEST_MODEL_PATH
+
+    architecture = architecture.lower()
+    MODEL_PATH, BEST_MODEL_PATH = model_paths_for_architecture(architecture)
     keras.utils.set_random_seed(SEED)
     if BEST_MODEL_PATH.exists():
         BEST_MODEL_PATH.unlink()
@@ -599,7 +640,7 @@ def main():
 
 
     # Build model
-    model, base_model = build_model(len(class_names))
+    model, base_model = build_model(len(class_names), architecture)
 
     # Debug logs for balanced batch verification
     log_debug_batches_for_balance(model, train_ds, class_names)
@@ -743,7 +784,7 @@ def main():
 
         # Stage 2
 
-        print("\n=== Stage 2: unfreeze last %d MobileNetV2 layers ===" % FINE_TUNE_UNFREEZE_LAST_N_LAYERS)
+        print("\n=== Stage 2: unfreeze last %d %s layers ===" % (FINE_TUNE_UNFREEZE_LAST_N_LAYERS, architecture))
         unfreeze_last_n_backbone_layers(base_model, FINE_TUNE_UNFREEZE_LAST_N_LAYERS)
         # Reuse the same label-smoothed loss fn for fine-tuning.
         model.compile(
@@ -780,6 +821,9 @@ def main():
         )
 
     model.save(MODEL_PATH)
+    if architecture == "mobilenetv2":
+        # Keep the legacy filename updated for existing app/self-learning code.
+        model.save(MODEL_DIR / "skin_model.keras")
 
     old_model_path = MODEL_DIR / "skin_model.h5"
     if old_model_path.exists():
@@ -802,9 +846,32 @@ def main():
             cwd=str(PROJECT_ROOT),
             check=False,
         )
+
+        # After diagnostics evaluation, run automatic misclassification analysis.
+        subprocess.run(
+            [sys.executable, "analytics/misclassification_analysis.py"],
+            cwd=str(PROJECT_ROOT),
+            check=False,
+        )
     except Exception as exc:
-        print(f"Diagnostics run failed: {exc}")
+        print(f"Diagnostics/misclassification analysis run failed: {exc}")
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Train skin disease classifier architectures.")
+    parser.add_argument(
+        "--architecture",
+        choices=sorted(SUPPORTED_ARCHITECTURES | {"all"}),
+        default="mobilenetv2",
+        help="Architecture to train. Use 'all' for MobileNetV2, EfficientNetB0, and DenseNet121.",
+    )
+    args = parser.parse_args()
+
+    architectures = (
+        ["mobilenetv2", "efficientnetb0", "densenet121"]
+        if args.architecture == "all"
+        else [args.architecture]
+    )
+    for arch in architectures:
+        print(f"\n\n========== Training {arch} ==========")
+        main(arch)

@@ -1,192 +1,341 @@
-import json
-import re
+"""utils.ai_recognition
 
+AI-based skin disease recognition using Google Gemini API.
+
+This module provides:
+- recognize_with_ai: Direct AI recognition for low-confidence ML predictions
+- verify_prediction_with_ai: AI verification of ML predictions for improved accuracy
+
+All AI requests are sanitized to remove PII before sending to external APIs.
+"""
+
+import base64
+import io
+import logging
+from typing import Any
+
+import google.generativeai as genai
 from PIL import Image
 
 from utils.config import GEMINI_API_KEY, GEMINI_MODEL_NAME
+from utils.privacy import sanitize_payload
 
-from model.registry_utils import resolve_to_canonical
+LOGGER = logging.getLogger(__name__)
 
-
-
-# Dermatology-focused prompt for strict JSON output
-MEDICAL_DERM_PROMPT = """You are an expert dermatologist AI.
-
-Analyze the uploaded skin disease image carefully and identify the most likely skin condition.
-
-Return STRICT JSON only (no markdown, no backticks, no extra keys).
-
-Return these keys exactly:
-1) disease: string (choose ONE most likely disease)
-2) confidence: number from 0 to 100
-3) explanation: string (short medical explanation)
-4) severity: string (choose ONE: Mild, Moderate, Severe)
-
-Possible diseases include:
-- Acne
-- Psoriasis
-- Eczema
-- Vitiligo
-- Tinea
-- Molluscum Contagiosum
-- Melanoma
-- Contact Dermatitis
-
-Do not return 'Unknown' unless absolutely impossible (e.g., the image is completely invalid/uninterpretable).
-
-This is NOT a medical diagnosis. Add a clear disclaimer inside the 'explanation'."""
-
-
-
-def _gemini_model():
-    import google.generativeai as genai
-
+# Configure Gemini API
+if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
-    return genai.GenerativeModel(GEMINI_MODEL_NAME)
 
 
-def analyze_with_ai(image: Image.Image) -> str:
-    """Return a human-readable Gemini Vision analysis for the uploaded image."""
-    if not GEMINI_API_KEY:
-        return "AI analysis unavailable: API key is not configured."
-
-    # Reuse the strict JSON pipeline and then format it.
-    result = recognize_with_ai(image)
-    if not result:
-        return "AI analysis unavailable."
-
-    disease = result.get("disease", "")
-    conf = result.get("confidence", 0)
-    explanation = result.get("explanation", "")
-    severity = result.get("severity", "")
-
-    return f"Possible Skin Condition: {disease}\nConfidence: {conf:.1f}%\nSeverity: {severity}\nExplanation: {explanation}" 
+def _image_to_base64(image: Image.Image) -> str:
+    """Convert PIL Image to base64 string for API transmission."""
+    buffered = io.BytesIO()
+    image.save(buffered, format="JPEG")
+    img_str = base64.b64encode(buffered.getvalue()).decode()
+    return img_str
 
 
-
-def _normalize_text(s: str) -> str:
-    return re.sub(r"\s+", " ", (s or "").strip()).lower()
-
-
-def _normalize_disease_name(disease: str) -> str:
-    """Normalize AI disease strings to our dataset/class names.
-
-    This is intentionally conservative: it maps obvious synonyms to canonical labels.
+def _sanitize_ai_request_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Sanitize AI request payload to remove PII before sending to external API.
+    
+    This ensures no personal information (name, email, doctor ID, hospital name, etc.)
+    is sent to AI services. Only image data and disease prediction data are allowed.
     """
-    raw = _normalize_text(disease)
-
-    mapping = {
-        "contact dermatitis": "Contact Dermatitis",
-        "skin allergy": "Contact Dermatitis",
-        "eczema": "Eczema",
-        "atopic dermatitis": "Eczema",
-        "fungal infection": "Tinea",
-        "ringworm": "Tinea",
-        "tinea": "Tinea",
-        "molluscum contagiosum": "Molluscum Contagiosum",
-        "molluscum": "Molluscum Contagiosum",
-        "melanoma": "Melanoma",
-        "psoriasis": "Psoriasis",
-        "vitiligo": "Vitiligo",
-        "acne": "Acne",
-        "acne vulgaris": "Acne",
-    }
-
-    for k, v in mapping.items():
-        if raw == k or raw.startswith(k):
-            return v
-
-    # If it already matches one of canonical disease names (case-insensitive), keep it.
-    canonical = [
-        "Acne",
-        "Psoriasis",
-        "Eczema",
-        "Vitiligo",
-        "Tinea",
-        "Molluscum Contagiosum",
-        "Melanoma",
-        "Contact Dermatitis",
-    ]
-    for c in canonical:
-        if raw == c.lower():
-            return c
-
-    return str(disease or "Unknown").strip() or "Unknown"
+    return sanitize_payload(payload)
 
 
-def recognize_with_ai(image: Image.Image) -> dict | None:
-    """Use Gemini Vision as a low-confidence fallback when configured."""
+def recognize_with_ai(image: Image.Image) -> dict[str, Any] | None:
+    """Recognize skin disease using AI (Gemini) for low-confidence ML predictions.
+    
+    This function is called when ML confidence is low (<80%) or entropy is high (>0.9).
+    It sends only the image to AI, with no PII.
+    
+    Args:
+        image: PIL Image of the skin condition
+        
+    Returns:
+        dict with keys: disease, confidence, severity, explanation
+        or None if AI recognition fails
+    """
     if not GEMINI_API_KEY:
+        LOGGER.warning("GEMINI_API_KEY not configured, AI recognition unavailable")
+        return None
+    
+    try:
+        model = genai.GenerativeModel(GEMINI_MODEL_NAME)
+        
+        # Convert image to bytes
+        buffered = io.BytesIO()
+        image.save(buffered, format="JPEG")
+        image_bytes = buffered.getvalue()
+        
+        # Create sanitized payload - only image data, no PII
+        payload = {
+            "parts": [
+                {
+                    "mime_type": "image/jpeg",
+                    "data": image_bytes
+                },
+                {
+                    "text": """Analyze this skin image and identify the most likely skin condition.
+                    
+Respond in this exact JSON format:
+{
+    "disease": "disease name",
+    "confidence": 0.0-100.0,
+    "severity": "mild/moderate/severe",
+    "explanation": "brief explanation"
+}
+
+Only respond with the JSON, no additional text."""
+                }
+            ]
+        }
+        
+        # Sanitize payload to ensure no PII is sent
+        sanitized_payload = _sanitize_ai_request_payload(payload)
+        
+        # Call Gemini API
+        response = model.generate_content(
+            [sanitized_payload["parts"][0], sanitized_payload["parts"][1]["text"]]
+        )
+        
+        # Parse response
+        result_text = response.text.strip()
+        
+        # Try to extract JSON from response
+        import json
+        import re
+        
+        # Find JSON in response
+        json_match = re.search(r'\{[^}]+\}', result_text, re.DOTALL)
+        if json_match:
+            result_text = json_match.group(0)
+        
+        result = json.loads(result_text)
+        
+        # Validate required fields
+        if not result.get("disease") or result.get("disease", "").lower() == "unknown":
+            LOGGER.warning("AI returned unknown disease")
+            return None
+        
+        return {
+            "disease": result.get("disease", "Unknown"),
+            "confidence": float(result.get("confidence", 0) or 0),
+            "severity": result.get("severity", ""),
+            "explanation": result.get("explanation", "")
+        }
+        
+    except Exception as exc:
+        LOGGER.error(f"AI recognition failed: {exc}")
         return None
 
+
+def verify_prediction_with_ai(
+    image: Image.Image,
+    ml_prediction: str,
+    ml_confidence: float
+) -> dict[str, Any] | None:
+    """Verify ML prediction using AI for improved accuracy.
+    
+    This function is called after ML prediction when confidence is above threshold
+    to provide an additional layer of verification. It compares ML and AI predictions
+    to improve overall confidence.
+    
+    Args:
+        image: PIL Image of the skin condition
+        ml_prediction: Disease predicted by ML model
+        ml_confidence: Confidence score from ML model (0-100)
+        
+    Returns:
+        dict with keys:
+            - ai_prediction: Disease predicted by AI
+            - ai_confidence: Confidence score from AI (0-100)
+            - agreement: Whether ML and AI agree (True/False)
+            - verification_source: "ML" or "AI" based on which to trust
+        or None if verification fails
+    """
+    if not GEMINI_API_KEY:
+        LOGGER.warning("GEMINI_API_KEY not configured, AI verification unavailable")
+        return None
+    
     try:
-        # Hardening: ensure valid RGB and provide bytes with explicit MIME via PIL->bytes.
-        if image.mode != "RGB":
-            image = image.convert("RGB")
+        model = genai.GenerativeModel(GEMINI_MODEL_NAME)
+        
+        # Convert image to bytes
+        buffered = io.BytesIO()
+        image.save(buffered, format="JPEG")
+        image_bytes = buffered.getvalue()
+        
+        # Create sanitized payload - only image and ML prediction, no PII
+        payload = {
+            "parts": [
+                {
+                    "mime_type": "image/jpeg",
+                    "data": image_bytes
+                },
+                {
+                    "text": f"""Analyze this skin image. The ML model predicted: "{ml_prediction}" with {ml_confidence:.1f}% confidence.
 
-        from io import BytesIO
+Verify if this prediction is correct. Respond in this exact JSON format:
+{{
+    "disease": "your predicted disease name",
+    "confidence": 0.0-100.0,
+    "agreement": true/false,
+    "explanation": "brief explanation"
+}}
 
-        buf = BytesIO()
-        # JPEG tends to be safest for Vision models.
-        image.save(buf, format="JPEG", quality=90)
-        img_bytes = buf.getvalue()
-
-        response = _gemini_model().generate_content(
-            [
-                MEDICAL_DERM_PROMPT,
-                {"mime_type": "image/jpeg", "data": img_bytes},
+Only respond with the JSON, no additional text."""
+                }
             ]
+        }
+        
+        # Sanitize payload to ensure no PII is sent
+        sanitized_payload = _sanitize_ai_request_payload(payload)
+        
+        # Call Gemini API
+        response = model.generate_content(
+            [sanitized_payload["parts"][0], sanitized_payload["parts"][1]["text"]]
         )
-
-        text = getattr(response, "text", "") or ""
-
-        match = re.search(r"\{\s*\"disease\".*\}", text, re.S)
-        raw_json = match.group(0) if match else text
-        payload = json.loads(raw_json)
-
-        disease_raw = payload.get("disease", "Unknown")
-        disease = _normalize_disease_name(disease_raw)
-
-        # Canonicalize using the registry (prevents folder/class drift).
-        canonical = resolve_to_canonical(disease)
-        disease = canonical or disease
-
-
-        confidence = float(payload.get("confidence", 0))
-        confidence = max(0.0, min(confidence, 100.0))
-
-        explanation = str(payload.get("explanation", "") or "").strip()[:800]
-        severity = str(payload.get("severity", "") or "").strip()
-
-        # If the model returns generic/invalid outputs, treat as failure.
-        generic = {
-            "unknown",
-            "unable to identify",
-            "can't identify",
-            "cannot identify",
-            "uninterpretable",
-            "not sure",
-            "unsure",
-        }
-
-        if _normalize_text(disease_raw) in generic or _normalize_text(disease) in generic:
-            raise ValueError("Generic/unknown AI disease output.")
-
-
+        
+        # Parse response
+        result_text = response.text.strip()
+        
+        # Try to extract JSON from response
+        import json
+        import re
+        
+        # Find JSON in response
+        json_match = re.search(r'\{[^}]+\}', result_text, re.DOTALL)
+        if json_match:
+            result_text = json_match.group(0)
+        
+        result = json.loads(result_text)
+        
+        ai_disease = result.get("disease", "Unknown")
+        ai_confidence = float(result.get("confidence", 0) or 0)
+        agreement = result.get("agreement", False)
+        
+        # Determine which prediction to trust
+        # If AI agrees with ML and has similar or higher confidence, trust ML
+        # If AI disagrees and has higher confidence, trust AI
+        verification_source = "ML"
+        if agreement:
+            verification_source = "ML"
+        elif ai_confidence > ml_confidence + 10:  # AI significantly more confident
+            verification_source = "AI"
+        else:
+            verification_source = "ML"
+        
         return {
-            "disease": disease,
-            "confidence": confidence,
-            "explanation": explanation,
-            "severity": severity,
+            "ai_prediction": ai_disease,
+            "ai_confidence": ai_confidence,
+            "agreement": agreement,
+            "verification_source": verification_source,
+            "explanation": result.get("explanation", "")
         }
-
+        
     except Exception as exc:
-        # Return a hard-fail object; app.py will decide how to handle.
-        return {
-            "disease": "Unknown",
-            "confidence": 0.0,
-            "explanation": f"AI fallback failed: {exc}",
-            "severity": "Mild",
+        LOGGER.error(f"AI verification failed: {exc}")
+        return None
+
+
+def verify_multi_model_predictions_with_ai(
+    image: Image.Image,
+    model_predictions: list[dict[str, Any]],
+    comparison_summary: str
+) -> dict[str, Any] | None:
+    """Verify multi-model predictions using AI for improved accuracy.
+    
+    This function is called after multi-model prediction to provide AI verification
+    of the ensemble results. It analyzes all model outputs and suggests the best prediction.
+    
+    Args:
+        image: PIL Image of the skin condition
+        model_predictions: List of prediction results from multiple models
+        comparison_summary: Formatted summary of model comparisons
+        
+    Returns:
+        dict with keys:
+            - ai_prediction: Disease predicted by AI
+            - ai_confidence: Confidence score from AI (0-100)
+            - verification_source: "ML" or "AI" based on which to trust
+            - explanation: AI's explanation
+        or None if verification fails
+    """
+    if not GEMINI_API_KEY:
+        LOGGER.warning("GEMINI_API_KEY not configured, AI verification unavailable")
+        return None
+    
+    try:
+        model = genai.GenerativeModel(GEMINI_MODEL_NAME)
+        
+        # Convert image to bytes
+        buffered = io.BytesIO()
+        image.save(buffered, format="JPEG")
+        image_bytes = buffered.getvalue()
+        
+        # Create sanitized payload - only image and model predictions, no PII
+        prompt_text = f"""Analyze this skin image and verify the multi-model predictions.
+
+{comparison_summary}
+
+Based on the image analysis and model predictions, provide your final assessment.
+Respond in this exact JSON format:
+{{
+    "disease": "your final predicted disease name",
+    "confidence": 0.0-100.0,
+    "verification_source": "ML" or "AI",
+    "explanation": "brief explanation of your decision"
+}}
+
+Only respond with the JSON, no additional text."""
+        
+        payload = {
+            "parts": [
+                {
+                    "mime_type": "image/jpeg",
+                    "data": image_bytes
+                },
+                {
+                    "text": prompt_text
+                }
+            ]
         }
-
-
+        
+        # Sanitize payload to ensure no PII is sent
+        sanitized_payload = _sanitize_ai_request_payload(payload)
+        
+        # Call Gemini API
+        response = model.generate_content(
+            [sanitized_payload["parts"][0], sanitized_payload["parts"][1]["text"]]
+        )
+        
+        # Parse response
+        result_text = response.text.strip()
+        
+        # Try to extract JSON from response
+        import json
+        import re
+        
+        # Find JSON in response
+        json_match = re.search(r'\{[^}]+\}', result_text, re.DOTALL)
+        if json_match:
+            result_text = json_match.group(0)
+        
+        result = json.loads(result_text)
+        
+        ai_disease = result.get("disease", "Unknown")
+        ai_confidence = float(result.get("confidence", 0) or 0)
+        verification_source = result.get("verification_source", "ML")
+        
+        return {
+            "ai_prediction": ai_disease,
+            "ai_confidence": ai_confidence,
+            "verification_source": verification_source,
+            "explanation": result.get("explanation", "")
+        }
+        
+    except Exception as exc:
+        LOGGER.error(f"Multi-model AI verification failed: {exc}")
+        return None
