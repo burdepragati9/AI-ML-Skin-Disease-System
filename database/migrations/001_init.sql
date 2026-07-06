@@ -30,9 +30,12 @@ CREATE TABLE IF NOT EXISTS searches (
     disease TEXT NOT NULL,
     image_path TEXT,
     image_hash TEXT,
+    image_name TEXT,
     confidence REAL NOT NULL,
     prediction_source TEXT NOT NULL,
+
     ai_fallback_status TEXT NOT NULL DEFAULT 'not_used',
+
     retraining_status TEXT NOT NULL DEFAULT 'not_required',
     mobilenet_prediction TEXT,
     mobilenet_confidence REAL,

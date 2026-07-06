@@ -1,0 +1,66 @@
+import { Navigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+
+import api from "../../services/api";
+import { getToken, getUserRole, logout } from "../../services/auth";
+
+export default function ProtectedRoute({ allowedRoles, children }) {
+
+  const [verified, setVerified] = useState(false);
+  const [allowed, setAllowed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function verify() {
+      const token = getToken();
+      if (!token) {
+        logout();
+        if (!cancelled) {
+          setAllowed(false);
+          setVerified(true);
+        }
+        return;
+      }
+
+      try {
+        // Validate token + session
+        await api.get("/auth/me");
+
+        const role = getUserRole();
+        if (!allowedRoles || allowedRoles.length === 0) {
+          if (!cancelled) {
+            setAllowed(true);
+            setVerified(true);
+          }
+          return;
+        }
+
+        const ok = allowedRoles.includes(role);
+        if (!cancelled) {
+          setAllowed(ok);
+          setVerified(true);
+        }
+      } catch {
+        logout();
+        if (!cancelled) {
+          setAllowed(false);
+          setVerified(true);
+        }
+      }
+    }
+
+    verify();
+    return () => {
+      cancelled = true;
+    };
+  }, [allowedRoles]);
+
+  if (!verified) return null;
+
+  if (!allowed) return <Navigate to="/login" replace />;
+  return children ? children : <Outlet />;
+}
+
+
+

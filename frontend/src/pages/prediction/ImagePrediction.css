@@ -1,0 +1,876 @@
+:root {
+  /* Modern Medical AI Theme */
+  --ip-primary: #2563EB;
+  --ip-secondary: #3B82F6;
+  --ip-success: #10B981;
+  --ip-warning: #F59E0B;
+  --ip-error: #EF4444;
+  --ip-purple: #8B5CF6;
+  --ip-orange: #F97316;
+  
+  --ip-background: #F8FAFC;
+  --ip-card-bg: #FFFFFF;
+  --ip-text-primary: #1F2937;
+  --ip-text-secondary: #374151;
+  --ip-text-muted: #6B7280;
+  
+  --ip-border-light: #E5E7EB;
+  --ip-border-medium: #D1D5DB;
+  
+  --ip-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --ip-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --ip-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --ip-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  
+  --ip-gradient-primary: linear-gradient(135deg, #2563EB 0%, #3B82F6 100%);
+  --ip-gradient-success: linear-gradient(135deg, #10B981 0%, #34D399 100%);
+  --ip-gradient-purple: linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%);
+  --ip-gradient-orange: linear-gradient(135deg, #F97316 0%, #FB923C 100%);
+  
+  --ip-glass-bg: rgba(255, 255, 255, 0.8);
+  --ip-glass-border: rgba(255, 255, 255, 0.5);
+}
+
+.ipPage {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  animation: fadeIn 0.4s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ipHero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.ipTitle {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: var(--ip-text-primary);
+  background: var(--ip-gradient-primary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.ipSubtitle {
+  margin-top: 8px;
+  font-size: 15px;
+  color: var(--ip-text-secondary);
+  max-width: 720px;
+  line-height: 1.6;
+  font-weight: 400;
+}
+
+
+.ipHeroTag {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  color: var(--ip-primary);
+  padding: 10px 16px;
+  border-radius: 20px;
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+  box-shadow: var(--ip-shadow-sm);
+  transition: all 0.2s ease;
+}
+
+.ipHeroTag:hover {
+  box-shadow: var(--ip-shadow-md);
+  transform: translateY(-1px);
+}
+
+.glassCard {
+  background: var(--ip-card-bg);
+  border: 1px solid var(--ip-border-light);
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: var(--ip-shadow-lg);
+  backdrop-filter: blur(20px);
+  transition: all 0.3s ease;
+}
+
+.glassCard:hover {
+  box-shadow: var(--ip-shadow-xl);
+}
+
+.ipSection {
+  padding: 0;
+}
+
+.ipSectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.ipSectionTitle {
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--ip-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ipSectionHint {
+  font-size: 13px;
+  color: var(--ip-text-muted);
+  font-weight: 500;
+  background: var(--ip-background);
+  padding: 6px 12px;
+  border-radius: 12px;
+}
+
+
+
+
+.ipDropZone {
+  border-radius: 20px;
+  border: 2px dashed var(--ip-border-medium);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.02) 0%, rgba(59, 130, 246, 0.02) 100%);
+  min-height: 200px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: grid;
+  place-items: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.ipDropZone::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--ip-gradient-primary);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.ipDropZone:hover {
+  border-color: var(--ip-primary);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.05) 0%, rgba(59, 130, 246, 0.05) 100%);
+  transform: translateY(-2px);
+  box-shadow: var(--ip-shadow-md);
+}
+
+.ipDropZone:hover::before {
+  opacity: 0.03;
+}
+
+.ipDropZone:active {
+  transform: translateY(0);
+}
+
+.ipFileInput {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ipDropInner {
+  width: min(960px, 100%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 16px 20px;
+  position: relative;
+  z-index: 1;
+}
+
+.ipDropIcon {
+  width: 64px;
+  height: 64px;
+  border-radius: 20px;
+  display: grid;
+  place-items: center;
+  background: var(--ip-gradient-primary);
+  border: none;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.3);
+  font-size: 28px;
+  flex: 0 0 auto;
+  transition: all 0.3s ease;
+}
+
+.ipDropZone:hover .ipDropIcon {
+  transform: scale(1.1);
+  box-shadow: 0 12px 28px rgba(37, 99, 235, 0.4);
+}
+
+.ipDropText {
+  flex: 1;
+  min-width: 220px;
+}
+
+.ipDropHeading {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ip-text-primary);
+  transition: color 0.3s ease;
+}
+
+.ipDropZone:hover .ipDropHeading {
+  color: var(--ip-primary);
+}
+
+.ipDropMeta {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--ip-text-muted);
+  font-weight: 400;
+}
+
+
+.ipDropCount {
+  text-align: right;
+  flex: 0 0 auto;
+  background: var(--ip-gradient-success);
+  border: none;
+  border-radius: 16px;
+  padding: 12px 16px;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+  transition: all 0.3s ease;
+}
+
+.ipDropZone:hover .ipDropCount {
+  transform: scale(1.05);
+}
+
+.ipDropCountBig {
+  color: white;
+  font-weight: 700;
+  font-size: 28px;
+  letter-spacing: -0.5px;
+}
+
+.ipDropCountSmall {
+  display: inline-block;
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 500;
+  font-size: 13px;
+  margin-left: 4px;
+}
+
+
+.ipPreviewLarge {
+  margin-top: 20px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.ipPreviewItem {
+  border-radius: 16px;
+  border: 1px solid var(--ip-border-light);
+  background: var(--ip-card-bg);
+  padding: 16px;
+  box-shadow: var(--ip-shadow-md);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: all 0.3s ease;
+}
+
+.ipPreviewItem:hover {
+  box-shadow: var(--ip-shadow-lg);
+  transform: translateY(-2px);
+}
+
+.ipPreviewThumb {
+  width: 100%;
+  height: 180px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--ip-border-light);
+  background: var(--ip-background);
+}
+
+.ipPreviewThumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.3s ease;
+}
+
+.ipPreviewItem:hover .ipPreviewThumb img {
+  transform: scale(1.05);
+}
+
+.ipPreviewMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ipPreviewName {
+  color: var(--ip-text-primary);
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ipPreviewSize {
+  color: var(--ip-text-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+
+.ipRemoveBtn {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--ip-error);
+  background: rgba(239, 68, 68, 0.05);
+  color: var(--ip-error);
+  font-weight: 600;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ipRemoveBtn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  transform: translateY(-1px);
+}
+
+.ipRemoveBtn:active {
+  transform: translateY(0);
+}
+
+.ipActionRow {
+  margin-top: 20px;
+  display: flex;
+  gap: 12px;
+}
+
+.ipBtn {
+  border-radius: 14px;
+  padding: 14px 20px;
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+  flex: 1;
+}
+
+.ipBtn:active {
+  transform: translateY(1px);
+}
+
+.ipBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ipBtnPrimary {
+  background: var(--ip-gradient-primary);
+  border-color: transparent;
+  color: white;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
+}
+
+.ipBtnPrimary:hover:not(:disabled) {
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+  transform: translateY(-1px);
+}
+
+.ipBtnGhost {
+  background: var(--ip-card-bg);
+  border-color: var(--ip-border-medium);
+  color: var(--ip-text-secondary);
+}
+
+.ipBtnGhost:hover:not(:disabled) {
+  background: var(--ip-background);
+  border-color: var(--ip-text-muted);
+}
+
+.ipResultGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.ipPredCard {
+  border-radius: 20px;
+  border: 1px solid var(--ip-border-light);
+  background: var(--ip-card-bg);
+  padding: 20px;
+  box-shadow: var(--ip-shadow-md);
+  transition: all 0.3s ease;
+}
+
+.ipPredCard--result {
+  padding: 20px;
+}
+
+.ipPredCard:hover {
+  box-shadow: var(--ip-shadow-lg);
+  transform: translateY(-2px);
+}
+
+.ipPredTop {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--ip-border-light);
+}
+
+.ipPredThumbLarge {
+  width: 96px;
+  height: 80px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--ip-border-light);
+  background: var(--ip-background);
+  box-shadow: var(--ip-shadow-sm);
+}
+
+.ipPredThumbLarge img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.ipPredNameBlock {
+  flex: 1;
+  min-width: 0;
+}
+
+.ipPredName {
+  color: var(--ip-text-primary);
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ipPredSubtle {
+  margin-top: 4px;
+  color: var(--ip-text-muted);
+  font-weight: 500;
+  font-size: 12px;
+}
+
+
+
+
+
+.ipPredRows {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ipInfoRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.ipInfoRowTight {
+  margin-top: -6px;
+}
+
+.ipInfoLabel {
+  color: var(--ip-text-secondary);
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.ipInfoValue {
+  color: var(--ip-text-primary);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+
+.ipDiseaseBadge {
+  color: var(--ip-primary);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  font-size: 13px;
+}
+
+
+.ipSourceBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: capitalize;
+  border: 1px solid;
+}
+
+.ipSourceBadge--ai-verification {
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: #059669;
+}
+
+.ipSourceBadge--majority-voting {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: #2563EB;
+}
+
+.ipSourceBadge--unanimous-voting {
+  background: rgba(139, 92, 246, 0.1);
+  border-color: rgba(139, 92, 246, 0.3);
+  color: #7C3AED;
+}
+
+.ipSourceBadge--ensemble-voting {
+  background: rgba(249, 115, 22, 0.1);
+  border-color: rgba(249, 115, 22, 0.3);
+  color: #EA580C;
+}
+
+
+.ipConfidence {
+  color: var(--ip-text-primary);
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.ipConfidenceBar {
+  margin-top: 8px;
+}
+
+.ipConfidenceTrack {
+  border-radius: 999px;
+  border: 1px solid var(--ip-border-light);
+  background: var(--ip-background);
+  height: 12px;
+  overflow: hidden;
+  position: relative;
+}
+
+.ipConfidenceFill {
+  height: 100%;
+  background: var(--ip-gradient-primary);
+  border-radius: 999px;
+  transition: width 0.8s ease-out;
+  position: relative;
+}
+
+.ipConfidenceFill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.3) 50%, transparent 100%);
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.ipMultiModelGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.ipModelCompareCard {
+  border-radius: 16px;
+  border: 1px solid var(--ip-border-light);
+  background: var(--ip-background);
+  padding: 16px;
+  transition: all 0.3s ease;
+}
+
+.ipModelCompareCard:hover {
+  background: var(--ip-card-bg);
+  box-shadow: var(--ip-shadow-md);
+}
+
+
+.ipModelCompareHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.ipModelCompareTitle {
+  color: var(--ip-text-primary);
+  font-weight: 600;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ipModelCompareTitle::before {
+  content: '🤖';
+  font-size: 16px;
+}
+
+
+.ipModelRows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ipModelRow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  gap: 4px 12px;
+  align-items: center;
+}
+
+.ipModelLabel {
+  color: var(--ip-text-secondary);
+  font-weight: 500;
+  font-size: 12px;
+  grid-column: 1 / 2;
+}
+
+.ipModelValue {
+  grid-column: 1 / 2;
+  justify-self: start;
+  color: var(--ip-text-primary);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.ipModelConf {
+  grid-column: 2 / 3;
+  justify-self: end;
+  color: var(--ip-success);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.ipModelCompareFooter {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ip-border-light);
+}
+
+.ipModelCompareLine {
+  color: var(--ip-text-primary);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+
+.ipVerificationCard {
+  padding: 18px;
+  border-radius: 16px;
+  border: 2px solid var(--ip-primary);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.05) 0%, rgba(59, 130, 246, 0.05) 100%);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
+}
+
+.ipVerificationTitle {
+  font-weight: 700;
+  color: var(--ip-primary);
+  font-size: 16px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ipVerificationTitle::before {
+  content: '✨';
+  font-size: 18px;
+}
+
+.ipVerificationText {
+  color: var(--ip-text-primary);
+  font-weight: 500;
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+
+
+.ipFinalEnsemble {
+  padding: 18px;
+  border-radius: 16px;
+  border: 2px solid var(--ip-success);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(52, 211, 153, 0.08) 100%);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
+}
+
+.ipFinalEnsembleDisease {
+  margin-bottom: 12px;
+}
+
+.ipFinalBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: var(--ip-gradient-success);
+  border: none;
+  color: white;
+  font-weight: 700;
+  font-size: 14px;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.ipFinalEnsembleConf {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ipFinalConfLabel {
+  color: var(--ip-text-secondary);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.ipFinalConfValue {
+  color: var(--ip-text-primary);
+  font-weight: 700;
+  font-size: 15px;
+}
+
+
+/* Empty State */
+.ipEmptyState {
+  text-align: center;
+  padding: 60px 20px;
+  border-radius: 20px;
+  background: var(--ip-background);
+  border: 2px dashed var(--ip-border-medium);
+}
+
+.ipEmptyStateIcon {
+  font-size: 64px;
+  margin-bottom: 20px;
+  opacity: 0.5;
+}
+
+.ipEmptyStateTitle {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--ip-text-primary);
+  margin-bottom: 12px;
+}
+
+.ipEmptyStateText {
+  font-size: 14px;
+  color: var(--ip-text-muted);
+  line-height: 1.6;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+
+
+@media (max-width: 1100px) {
+  .ipPreviewLarge {
+    grid-template-columns: 1fr;
+  }
+
+  .ipResultGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .ipMultiModelGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .ipDropInner {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  .ipDropCount {
+    text-align: center;
+  }
+
+  .ipHero {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .ipSectionHeader {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 520px) {
+  .ipTitle {
+    font-size: 22px;
+  }
+
+  .ipDropZone {
+    min-height: 160px;
+  }
+
+  .ipDropIcon {
+    width: 48px;
+    height: 48px;
+    font-size: 22px;
+  }
+
+  .ipDropHeading {
+    font-size: 15px;
+  }
+
+  .ipPredThumbLarge {
+    width: 72px;
+    height: 60px;
+  }
+}
+

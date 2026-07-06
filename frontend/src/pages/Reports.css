@@ -1,0 +1,646 @@
+/* Premium Healthcare Analytics Dashboard Styles */
+
+.reportsContainer {
+  padding: 32px;
+  max-width: 1400px;
+  margin: 0 auto;
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  min-height: 100vh;
+}
+
+/* SECTION 1: Premium Report Header with Glassmorphism */
+.reportsHeaderCard {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(16, 185, 129, 0.1) 100%);
+  backdrop-filter: blur(20px);
+  border-radius: 24px;
+  padding: 32px;
+  margin-bottom: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+.reportsHeaderContent {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+}
+
+.reportsDoctorAvatar {
+  width: 80px;
+  height: 80px;
+  background: linear-gradient(135deg, #3B82F6 0%, #1E40AF 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
+  flex-shrink: 0;
+}
+
+.reportsAvatarIcon {
+  width: 48px;
+  height: 48px;
+  color: white;
+}
+
+.reportsHeaderInfo {
+  flex: 1;
+}
+
+.reportsHeaderTitle {
+  font-size: 28px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0 0 16px 0;
+  background: linear-gradient(135deg, #3B82F6 0%, #1E40AF 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.reportsHeaderDetails {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.reportsHeaderDetail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.reportsHeaderLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.reportsHeaderValue {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+/* SECTION 2: Analytics Overview Cards */
+.reportsAnalyticsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 24px;
+  margin-bottom: 32px;
+}
+
+.reportsAnalyticsCard {
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+.reportsAnalyticsCard:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+}
+
+.reportsAnalyticsIcon {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.reportsAnalyticsIcon svg {
+  width: 32px;
+  height: 32px;
+  color: white;
+}
+
+.reportsAnalyticsIconBlue {
+  background: linear-gradient(135deg, #3B82F6 0%, #1E40AF 100%);
+}
+
+.reportsAnalyticsIconGreen {
+  background: linear-gradient(135deg, #10B981 0%, #047857 100%);
+}
+
+.reportsAnalyticsIconPurple {
+  background: linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%);
+}
+
+.reportsAnalyticsIconOrange {
+  background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+}
+
+.reportsAnalyticsContent {
+  flex: 1;
+}
+
+.reportsAnalyticsValue {
+  font-size: 32px;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 4px;
+}
+
+.reportsAnalyticsLabel {
+  font-size: 14px;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 2px;
+}
+
+.reportsAnalyticsDesc {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+/* SECTION 3: Disease Distribution with Chart */
+.reportsCardLarge {
+  background: #ffffff;
+  border-radius: 20px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  padding: 32px;
+  margin-bottom: 32px;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+.reportsCard {
+  background: #ffffff;
+  border-radius: 20px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  padding: 24px;
+  margin-bottom: 24px;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+.reportsCardTitle {
+  font-size: 22px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0 0 24px 0;
+  border-bottom: 2px solid #e2e8f0;
+  padding-bottom: 16px;
+}
+
+.reportsDistributionLayout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  align-items: start;
+}
+
+.reportsDistributionChart {
+  min-height: 300px;
+}
+
+.reportsDistributionTable {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reportsDistributionHeader {
+  display: grid;
+  grid-template-columns: 1fr 80px 80px;
+  gap: 16px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+  border-radius: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.reportsDistributionRow {
+  display: grid;
+  grid-template-columns: 1fr 80px 80px;
+  gap: 16px;
+  padding: 12px 16px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+.reportsDistributionRow:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.reportsDistributionCell {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  color: #334155;
+  font-weight: 500;
+}
+
+.reportsDistributionHeaderCell {
+  font-weight: 600;
+  color: #475569;
+}
+
+.reportsDistributionColor {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 12px;
+  flex-shrink: 0;
+}
+
+/* SECTION 4: Premium Case Cards */
+.reportsCasesList {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.reportsCaseCard {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 20px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s ease;
+  display: flex;
+  gap: 24px;
+}
+
+.reportsCaseCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  border-color: #cbd5e1;
+}
+
+.reportsCaseLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.reportsCaseNumber {
+  font-size: 14px;
+  font-weight: 700;
+  color: #3B82F6;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.reportsCaseImageContainer {
+  width: 140px;
+  height: 140px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #f1f5f9;
+  border: 2px solid #e2e8f0;
+}
+
+.reportsCaseThumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.reportsCaseNoImage {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1f5f9;
+}
+
+.reportsCaseNoImage svg {
+  width: 48px;
+  height: 48px;
+  color: #94a3b8;
+}
+
+.reportsCaseRight {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.reportsCaseRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.reportsCaseRow:last-child {
+  border-bottom: none;
+}
+
+.reportsCaseField {
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.reportsCaseData {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.reportsCaseDisease {
+  color: #3B82F6;
+  font-weight: 700;
+}
+
+.reportsCaseConfidence {
+  color: #10B981;
+  font-weight: 700;
+}
+
+.reportsCaseSource {
+  color: #8B5CF6;
+  font-weight: 600;
+}
+
+/* SECTION 5: AI Insights Panel */
+.reportsInsightsCard {
+  background: linear-gradient(135deg, #3B82F6 0%, #1E40AF 100%);
+  border-radius: 20px;
+  padding: 24px;
+  margin-bottom: 32px;
+  box-shadow: 0 8px 32px rgba(59, 130, 246, 0.3);
+  color: white;
+}
+
+.reportsInsightsHeader {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.reportsInsightsIcon {
+  width: 48px;
+  height: 48px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.reportsInsightsIcon svg {
+  width: 28px;
+  height: 28px;
+  color: white;
+}
+
+.reportsInsightsTitle {
+  font-size: 20px;
+  font-weight: 700;
+  color: white;
+  margin: 0;
+}
+
+.reportsInsightsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+}
+
+.reportsInsightItem {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.reportsInsightLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.reportsInsightValue {
+  font-size: 24px;
+  font-weight: 700;
+  color: white;
+}
+
+/* SECTION 6: PDF Download Button */
+.reportsDownloadButton {
+  width: 100%;
+  padding: 18px 32px;
+  background: linear-gradient(135deg, #3B82F6 0%, #1E40AF 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 16px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
+}
+
+.reportsDownloadButton:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.4);
+  background: linear-gradient(135deg, #2563EB 0%, #1E3A8A 100%);
+}
+
+.reportsDownloadButton:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.reportsDownloadButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.reportsDownloadIcon {
+  width: 24px;
+  height: 24px;
+}
+
+/* Loading and Error States */
+.reportsLoading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+}
+
+.reportsSpinner {
+  width: 56px;
+  height: 56px;
+  border: 4px solid #e2e8f0;
+  border-top-color: #3B82F6;
+  border-radius: 50%;
+  animation: reportsSpin 1s linear infinite;
+}
+
+@keyframes reportsSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.reportsLoadingText {
+  margin-top: 20px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.reportsError {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  text-align: center;
+}
+
+.reportsErrorTitle {
+  font-size: 24px;
+  font-weight: 700;
+  color: #dc2626;
+  margin-bottom: 12px;
+}
+
+.reportsErrorMessage {
+  font-size: 16px;
+  color: #64748b;
+}
+
+.reportsEmptyState {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  background: #f8fafc;
+  border-radius: 16px;
+  border: 2px dashed #cbd5e1;
+}
+
+.reportsEmptyText {
+  font-size: 16px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.reportsInfoMessage {
+  background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%);
+  border: 1px solid #FCD34D;
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #92400e;
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+  .reportsDistributionLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .reportsDistributionChart {
+    min-height: 250px;
+  }
+}
+
+@media (max-width: 768px) {
+  .reportsContainer {
+    padding: 20px;
+  }
+
+  .reportsHeaderCard {
+    padding: 24px;
+  }
+
+  .reportsHeaderContent {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .reportsHeaderDetails {
+    grid-template-columns: 1fr;
+  }
+
+  .reportsAnalyticsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .reportsAnalyticsCard {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .reportsCaseCard {
+    flex-direction: column;
+  }
+
+  .reportsCaseLeft {
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+  }
+
+  .reportsCaseImageContainer {
+    width: 100px;
+    height: 100px;
+  }
+
+  .reportsDistributionHeader,
+  .reportsDistributionRow {
+    grid-template-columns: 1fr 60px 60px;
+    gap: 12px;
+  }
+
+  .reportsInsightsGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .reportsHeaderTitle {
+    font-size: 22px;
+  }
+
+  .reportsAnalyticsValue {
+    font-size: 28px;
+  }
+
+  .reportsInsightsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .reportsCaseRow {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+}

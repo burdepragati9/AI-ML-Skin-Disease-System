@@ -1,0 +1,233 @@
+/* Doctor Management Styles - Matching Doctor Dashboard Design */
+
+.manageDoctors {
+  padding: 32px;
+  max-width: 1400px;
+  margin: 0 auto;
+  background: linear-gradient(135deg, #F8FAFC 0%, #E2E8F0 100%);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.manageDoctorsHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.manageDoctorsTitleWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.manageDoctorsTitle {
+  font-size: 32px;
+  font-weight: 900;
+  color: #0F172A;
+  letter-spacing: -0.5px;
+}
+
+.manageDoctorsSubtitle {
+  font-size: 15px;
+  color: #64748B;
+  font-weight: 600;
+  margin-top: 6px;
+}
+
+/* Summary Card */
+.manageDoctorsSummary {
+  margin: 24px 0;
+}
+
+.manageDoctorsSummaryCard {
+  background: white;
+  border-radius: 20px;
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  max-width: 400px;
+}
+
+.manageDoctorsSummaryCard::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #2563EB 0%, #3B82F6 100%);
+}
+
+.manageDoctorsSummaryCard:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+}
+
+.manageDoctorsSummaryIcon {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #2563EB 0%, #3B82F6 100%);
+  color: white;
+  font-size: 24px;
+}
+
+.manageDoctorsSummaryContent {
+  flex: 1;
+}
+
+.manageDoctorsSummaryValue {
+  font-size: 28px;
+  font-weight: 900;
+  color: #0F172A;
+  line-height: 1.2;
+  margin-bottom: 4px;
+}
+
+.manageDoctorsSummaryLabel {
+  font-size: 13px;
+  font-weight: 700;
+  color: #64748B;
+  margin-bottom: 2px;
+}
+
+/* Search */
+.manageDoctorsSearch {
+  margin: 24px 0;
+}
+
+.manageDoctorsSearchInput {
+  width: 100%;
+  max-width: 500px;
+  padding: 14px 20px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: white;
+  font-size: 14px;
+  font-weight: 600;
+  color: #0F172A;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.manageDoctorsSearchInput:focus {
+  outline: none;
+  border-color: #2563EB;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.manageDoctorsSearchInput::placeholder {
+  color: #94A3B8;
+  font-weight: 500;
+}
+
+/* Table Section */
+.manageDoctorsTableSection {
+  margin: 24px 0;
+}
+
+.manageDoctorsSectionHeader {
+  margin-bottom: 20px;
+}
+
+.manageDoctorsSectionTitle {
+  font-weight: 900;
+  color: #0F172A;
+  font-size: 18px;
+}
+
+.manageDoctorsTableWrap {
+  overflow-x: auto;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: white;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+}
+
+.manageDoctorsTable {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.manageDoctorsTable thead th {
+  background: #F3F4F6;
+  color: #111827;
+  font-weight: 900;
+  padding: 16px;
+  text-align: left;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid rgba(148, 163, 184, 0.2);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.manageDoctorsTable tbody td {
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  color: #374151;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.manageDoctorsTable tbody tr:nth-child(even) {
+  background: rgba(248, 250, 252, 0.5);
+}
+
+.manageDoctorsTable tbody tr:hover {
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.manageDoctorsTable tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Error State */
+.manageDoctorsError {
+  padding: 24px;
+  border-radius: 16px;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  background: rgba(255, 255, 255, 0.8);
+  text-align: center;
+  color: #DC2626;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .manageDoctors {
+    padding: 20px;
+  }
+  
+  .manageDoctorsSummaryCard {
+    max-width: 100%;
+  }
+  
+  .manageDoctorsSearchInput {
+    max-width: 100%;
+  }
+  
+  .manageDoctorsHeader {
+    flex-direction: column;
+  }
+}

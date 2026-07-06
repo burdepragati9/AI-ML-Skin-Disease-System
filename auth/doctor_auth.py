@@ -1,9 +1,10 @@
+import os
 import secrets
 import re
 from datetime import datetime, timedelta
 from typing import Optional
 
-from werkzeug.security import check_password_hash, generate_password_hash
+import bcrypt
 
 from database.db import ensure_usage_row, execute, fetch_one, utc_now
 from utils.config import FREE_SEARCH_LIMIT
@@ -26,12 +27,28 @@ def _generate_next_doctor_id() -> str:
     return f"{prefix}{next_number}"
 
 
+def _hash_password_bcrypt(password: str) -> str:
+    pw = (password or "").encode("utf-8")
+    hashed = bcrypt.hashpw(pw, bcrypt.gensalt(rounds=12))
+    return hashed.decode("utf-8")
+
+
+def _verify_password_bcrypt(password: str, password_hash: str) -> bool:
+    if not password_hash:
+        return False
+    try:
+        return bcrypt.checkpw(
+            (password or "").encode("utf-8"),
+            password_hash.encode("utf-8"),
+        )
+    except Exception:
+        return False
+
+
 def create_doctor(profile: dict, password: str) -> int:
     if len(password or "") < 8:
         raise ValueError("Password must be at least 8 characters.")
 
-    # Doctor ID is always auto-generated on the backend.
-    # Any user/admin-provided value (if present in profile) must be ignored.
     required = ["full_name", "specialization", "email"]
     for field in required:
         if not sanitize_text(profile.get(field, "")):
@@ -39,6 +56,7 @@ def create_doctor(profile: dict, password: str) -> int:
 
     now = utc_now()
     doctor_id = _generate_next_doctor_id()
+
     doctor_pk = execute(
         """
         INSERT INTO doctors (
@@ -57,27 +75,29 @@ def create_doctor(profile: dict, password: str) -> int:
             sanitize_text(profile.get("profile_photo", ""), 500),
             int(profile.get("experience") or 0),
             sanitize_text(profile.get("location", "")),
-            generate_password_hash(password),
+            _hash_password_bcrypt(password),
             now,
             now,
         ),
     )
+
     ensure_usage_row(doctor_pk)
     return doctor_pk
 
 
-
 def authenticate_doctor(email: str, password: str) -> Optional[dict]:
-    row = fetch_one("SELECT * FROM doctors WHERE email = ?", (sanitize_text(email.lower(), 180),))
-    if not row or not check_password_hash(row["password_hash"], password or ""):
+    row = fetch_one(
+        "SELECT * FROM doctors WHERE email = ?",
+        (sanitize_text(email.lower(), 180),),
+    )
+    if not row:
         return None
+
+    if not _verify_password_bcrypt(password, row["password_hash"]):
+        return None
+
     ensure_usage_row(int(row["id"]))
     return dict(row)
-
-
-def get_doctor(doctor_pk: int) -> Optional[dict]:
-    row = fetch_one("SELECT * FROM doctors WHERE id = ?", (doctor_pk,))
-    return dict(row) if row else None
 
 
 def update_doctor_profile(doctor_pk: int, profile: dict) -> None:
@@ -104,11 +124,16 @@ def update_doctor_profile(doctor_pk: int, profile: dict) -> None:
 
 
 def create_reset_token(email: str) -> Optional[str]:
-    row = fetch_one("SELECT id FROM doctors WHERE email = ?", (sanitize_text(email.lower(), 180),))
+    row = fetch_one(
+        "SELECT id FROM doctors WHERE email = ?",
+        (sanitize_text(email.lower(), 180),),
+    )
     if not row:
         return None
+
     token = secrets.token_urlsafe(32)
     expires = (datetime.utcnow() + timedelta(hours=1)).isoformat(timespec="seconds")
+
     execute(
         "UPDATE doctors SET reset_token = ?, reset_expires_at = ?, updated_at = ? WHERE id = ?",
         (token, expires, utc_now(), row["id"]),
@@ -120,9 +145,13 @@ def reset_password(token: str, new_password: str) -> bool:
     if len(new_password or "") < 8:
         raise ValueError("Password must be at least 8 characters.")
 
-    row = fetch_one("SELECT * FROM doctors WHERE reset_token = ?", (sanitize_text(token, 255),))
+    row = fetch_one(
+        "SELECT * FROM doctors WHERE reset_token = ?",
+        (sanitize_text(token, 255),),
+    )
     if not row or not row["reset_expires_at"]:
         return False
+
     if datetime.fromisoformat(row["reset_expires_at"]) < datetime.utcnow():
         return False
 
@@ -132,14 +161,21 @@ def reset_password(token: str, new_password: str) -> bool:
         SET password_hash = ?, reset_token = NULL, reset_expires_at = NULL, updated_at = ?
         WHERE id = ?
         """,
-        (generate_password_hash(new_password), utc_now(), row["id"]),
+        (
+            _hash_password_bcrypt(new_password),
+            utc_now(),
+            row["id"],
+        ),
     )
     return True
 
 
 def usage_for_doctor(doctor_pk: int) -> dict:
     ensure_usage_row(doctor_pk)
-    row = fetch_one("SELECT * FROM free_search_usage WHERE doctor_id = ?", (doctor_pk,))
+    row = fetch_one(
+        "SELECT * FROM free_search_usage WHERE doctor_id = ?",
+        (doctor_pk,),
+    )
     used = int(row["used_count"])
     limit = int(row["free_limit"] or FREE_SEARCH_LIMIT)
     return {"used": used, "limit": limit, "remaining": max(limit - used, 0)}
@@ -161,3 +197,4 @@ def consume_search(doctor_pk: int) -> None:
         """,
         (utc_now(), doctor_pk),
     )
+

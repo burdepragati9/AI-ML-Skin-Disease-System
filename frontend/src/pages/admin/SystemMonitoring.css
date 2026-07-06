@@ -1,0 +1,442 @@
+/* System Monitoring Styles - Matching Admin Dashboard Design */
+
+.systemMonitoring {
+  padding: 20px;
+  max-width: 1400px;
+  margin: 0 auto;
+  background: linear-gradient(135deg, #F8FAFC 0%, #E2E8F0 100%);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.systemMonitoringHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.systemMonitoringTitleWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.systemMonitoringTitle {
+  font-size: 30px;
+  font-weight: 900;
+  color: #0F172A;
+  letter-spacing: -0.5px;
+}
+
+.systemMonitoringSubtitle {
+  font-size: 14px;
+  color: #64748B;
+  font-weight: 600;
+  margin-top: 6px;
+}
+
+/* Summary Cards */
+.systemMonitoringCards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 10px;
+}
+
+
+
+.systemMonitoringCard {
+  background: white;
+  border-radius: 20px;
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.systemMonitoringCard::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--card-color) 0%, var(--card-color-light) 100%);
+}
+
+.systemMonitoringCard:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+}
+
+.systemMonitoringCardBlue {
+  --card-color: #2563EB;
+  --card-color-light: #3B82F6;
+}
+
+.systemMonitoringCardGreen {
+  --card-color: #10B981;
+  --card-color-light: #34D399;
+}
+
+.systemMonitoringCardPurple {
+  --card-color: #8B5CF6;
+  --card-color-light: #A78BFA;
+}
+
+.systemMonitoringCardTeal {
+  --card-color: #14B8A6;
+  --card-color-light: #2DD4BF;
+}
+
+.systemMonitoringCardIcon {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, var(--card-color) 0%, var(--card-color-light) 100%);
+  color: white;
+  font-size: 24px;
+}
+
+.systemMonitoringCardContent {
+  flex: 1;
+}
+
+.systemMonitoringCardValue {
+  font-size: 28px;
+  font-weight: 900;
+  color: #0F172A;
+  line-height: 1.2;
+  margin-bottom: 4px;
+}
+
+.systemMonitoringCardLabel {
+  font-size: 13px;
+  font-weight: 700;
+  color: #64748B;
+  margin-bottom: 2px;
+}
+
+/* Section Styling */
+.systemMonitoringSection {
+  margin-bottom: 16px;
+}
+
+.sectionHeader {
+  margin-bottom: 12px;
+}
+
+.sectionTitle {
+  font-weight: 900;
+  color: #0F172A;
+  font-size: 18px;
+}
+
+/* Status Cards */
+.statusCards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.statusCard {
+  background: white;
+  border-radius: 16px;
+  padding: 16px;
+  text-align: center;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+}
+
+.statusCardValue {
+  font-size: 28px;
+  font-weight: 900;
+  margin-bottom: 6px;
+}
+
+.statusCardLabel {
+  font-size: 13px;
+  font-weight: 700;
+  color: #64748B;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.statusCard--queued .statusCardValue {
+  color: #6B7280;
+}
+
+.statusCard--processing .statusCardValue {
+  color: #F59E0B;
+}
+
+.statusCard--completed .statusCardValue {
+  color: #10B981;
+}
+
+.statusCard--failed .statusCardValue {
+  color: #EF4444;
+}
+
+/* Activity Card */
+.activityCard {
+  background: white;
+  border-radius: 20px;
+  padding: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+}
+
+.activityGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.activityItem {
+  background: #F8FAFC;
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.activityItem--full {
+  grid-column: span 4;
+}
+
+.activityLabel {
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748B;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.activityValue {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0F172A;
+}
+
+/* Activity Image */
+.activityImage {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.activityImagePreview {
+  width: 100%;
+  max-width: 400px;
+  height: 300px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #F1F5F9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.activityImagePreview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.activityImageError {
+  color: #6B7280;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+/* Status Badge */
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.statusBadge--success {
+  background: #ECFDF5;
+  color: #065F46;
+  border: 1px solid rgba(6, 95, 70, 0.2);
+}
+
+.statusBadge--processing {
+  background: #FEF3C7;
+  color: #92400E;
+  border: 1px solid rgba(146, 64, 14, 0.2);
+}
+
+.statusBadge--failed {
+  background: #FEE2E2;
+  color: #991B1B;
+  border: 1px solid rgba(153, 27, 27, 0.2);
+}
+
+.statusBadge--queued {
+  background: #F3F4F6;
+  color: #374151;
+  border: 1px solid rgba(55, 65, 81, 0.2);
+}
+
+/* Table */
+.tableWrap {
+  overflow-x: auto;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: white;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+}
+
+.adminTable {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.adminTable thead th {
+  background: #F3F4F6;
+  color: #111827;
+  font-weight: 900;
+  padding: 16px;
+  text-align: left;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid rgba(148, 163, 184, 0.2);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.adminTable tbody td {
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  color: #374151;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.adminTable tbody tr:nth-child(even) {
+  background: rgba(248, 250, 252, 0.5);
+}
+
+.adminTable tbody tr:hover {
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.adminTable tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Health Badges */
+.healthBadges {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.healthBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 20px;
+  background: white;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  font-weight: 700;
+  font-size: 13px;
+  color: #374151;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.healthBadgeDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10B981;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Error State */
+.systemMonitoringError {
+  padding: 24px;
+  border-radius: 16px;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  background: rgba(255, 255, 255, 0.8);
+  text-align: center;
+  color: #DC2626;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+/* Responsive Design */
+@media (max-width: 1200px) {
+  .systemMonitoringCards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  
+  .statusCards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  
+  .activityGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .systemMonitoring {
+    padding: 20px;
+  }
+  
+  .systemMonitoringCards {
+    grid-template-columns: 1fr;
+  }
+  
+  .statusCards {
+    grid-template-columns: 1fr;
+  }
+  
+  .activityGrid {
+    grid-template-columns: 1fr;
+  }
+  
+  .activityItem--full {
+    grid-column: span 1;
+  }
+  
+  .systemMonitoringHeader {
+    flex-direction: column;
+  }
+}

@@ -1,0 +1,93 @@
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 220px;
+  height: 100vh;
+  background: #1f2937;
+  color: #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  padding: 18px 14px;
+  box-sizing: border-box;
+}
+
+.sidebarLogo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px;
+  border-radius: 14px;
+  margin-bottom: 14px;
+}
+
+.sidebarLogoMark {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(37, 99, 235, 0.22);
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  font-size: 18px;
+}
+
+.sidebarLogoText {
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  font-size: 14.5px;
+  color: #f9fafb;
+}
+
+.sidebarNav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sidebarLink {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 12px;
+  color: #e5e7eb;
+  text-decoration: none;
+  font-weight: 650;
+  font-size: 14px;
+  transition: background-color 140ms ease, color 140ms ease, transform 80ms ease;
+}
+
+.sidebarLink:hover {
+  background: rgba(229, 231, 235, 0.09);
+  color: #ffffff;
+}
+
+.sidebarLink:active {
+  transform: translateY(1px);
+}
+
+.sidebarLink.isActive {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+@media (max-width: 900px) {
+  .sidebar {
+    width: 86px;
+    padding: 18px 10px;
+  }
+
+  .sidebarLogoText {
+    display: none;
+  }
+
+  .sidebarLink {
+    padding: 10px 8px;
+    text-align: center;
+  }
+
+  .sidebarLink {
+    font-size: 13px;
+  }
+}
+

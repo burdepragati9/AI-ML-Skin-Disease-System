@@ -8,10 +8,12 @@ from utils.security import image_hash, safe_disease_slug, save_optimized_image
 
 def record_search(
     doctor_pk: int | None,
+
     image,
     disease: str,
     confidence: float,
     prediction_source: str,
+    image_name: str | None = None,
     ai_fallback_status: str = "not_used",
     retraining_status: str = "not_required",
     ensemble_metadata: dict[str, Any] | None = None,
@@ -23,27 +25,35 @@ def record_search(
         UPLOAD_HISTORY_PATH / disease_name,
         f"search_{disease_name}",
     )
+
+    # Requirement: store image_name (uploaded filename).
+    image_name = (image_name or "").strip() or None
+
+
     ensemble_metadata = ensemble_metadata or {}
     per_model = ensemble_metadata.get("per_model", {})
     return execute(
         """
         INSERT INTO searches (
-            doctor_id, disease, image_path, image_hash, confidence, prediction_source,
+            doctor_id, disease, image_path, image_hash, image_name,
+            confidence, prediction_source,
             ai_fallback_status, retraining_status,
             mobilenet_prediction, mobilenet_confidence,
+
             efficientnet_prediction, efficientnet_confidence,
             densenet_prediction, densenet_confidence,
             ensemble_prediction, ensemble_confidence,
             ai_verification_summary, model_agreement, model_predictions_json,
             created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             doctor_pk,
             disease_name,
             str(image_path),
             img_hash,
+            image_name,
             float(confidence),
             prediction_source,
             ai_fallback_status,
@@ -62,6 +72,7 @@ def record_search(
             utc_now(),
         ),
     )
+
 
 
 def recent_searches(doctor_pk: int, limit: int = 10, offset: int = 0, disease: str = ""):

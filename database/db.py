@@ -6,6 +6,10 @@ from typing import Iterable
 
 from utils.config import DB_PATH, FREE_SEARCH_LIMIT, PROJECT_ROOT
 
+MAX_FREE_SEARCHES = 4
+
+
+
 
 MIGRATIONS_DIR = PROJECT_ROOT / "database" / "migrations"
 
@@ -31,12 +35,25 @@ def _add_column_if_missing(
 
 def _upgrade_existing_schema(conn: sqlite3.Connection) -> None:
     """Apply additive schema upgrades for databases created before migrations grew."""
+
+
+    # Requirement: persist image_name (uploaded filename) on existing DBs
     _add_column_if_missing(
+        conn,
+        "searches",
+        "image_name",
+        "image_name TEXT",
+    )
+
+    _add_column_if_missing(
+
+
         conn,
         "searches",
         "ai_fallback_status",
         "ai_fallback_status TEXT NOT NULL DEFAULT 'not_used'",
     )
+
     _add_column_if_missing(
         conn,
         "searches",

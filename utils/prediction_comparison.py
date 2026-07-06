@@ -103,6 +103,7 @@ def build_ai_verification_summary(
     ai_result: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Create a concise verification decision from model agreement and optional Gemini output."""
+
     if not model_predictions:
         return {
             "summary": "No model predictions were available for verification.",
@@ -115,45 +116,117 @@ def build_ai_verification_summary(
     total_models = comparison_result["total_models"]
     consensus_class = comparison_result["consensus_class"]
     consensus_count = comparison_result["consensus_count"]
+
     soft_class = soft_vote_result["selected_class"]
     soft_confidence = soft_vote_result["selected_confidence"]
-    best_model = comparison_result["best_ml_prediction"]
-    agreement = "agreement" if consensus_count == total_models else "disagreement"
 
+    best_model = comparison_result["best_ml_prediction"]
+
+    agreement = (
+        "agreement"
+        if consensus_count == total_models
+        else "disagreement"
+    )
+
+    # ==========================
+    # Summary Text
+    # ==========================
     if consensus_count == total_models:
+
         summary = (
             f"All {total_models} models predict {consensus_class}. "
-            f"Soft voting confirms {soft_class} with {soft_confidence:.1f}% confidence."
+            f"Prediction accepted with full agreement."
         )
+
     elif consensus_count > total_models / 2:
+
         summary = (
-            f"{consensus_count}/{total_models} models predict {consensus_class}. "
-            f"{best_model['model_type']} has the highest single-model confidence "
-            f"({best_model['confidence']:.1f}%). Soft voting selects {soft_class}."
+            f"{consensus_count}/{total_models} models predict "
+            f"{consensus_class}. "
+            f"Majority voting selected {consensus_class}. "
+            f"Highest model confidence: "
+            f"{best_model['model_type']} "
+            f"({best_model['confidence']:.1f}%)."
         )
+
     else:
+
         summary = (
             f"The models disagree with no clear majority. "
-            f"Soft voting selects {soft_class}; highest single-model confidence is "
-            f"{best_model['model_type']} at {best_model['confidence']:.1f}%."
+            f"Soft voting selects {soft_class}. "
+            f"Highest model confidence: "
+            f"{best_model['model_type']} "
+            f"({best_model['confidence']:.1f}%)."
         )
 
-    source = "soft_voting"
-    final_class = soft_class
-    final_confidence = soft_confidence
+    # ==========================
+    # FINAL DECISION
+    # ==========================
 
-    # Optional external AI verification can override only when it is explicit and confident.
+    # Case 1: Full Agreement
+    if consensus_count == total_models:
+
+        final_class = consensus_class
+        final_confidence = majority_result["selected_confidence"]
+        source = "unanimous_voting"
+
+    # Case 2: Majority Exists
+    elif consensus_count > total_models / 2:
+
+        final_class = consensus_class
+        final_confidence = majority_result["selected_confidence"]
+        source = "majority_voting"
+
+    # Case 3: No Majority
+    else:
+
+        final_class = soft_class
+        final_confidence = soft_confidence
+        source = "soft_voting"
+
+    # ==========================
+    # Optional Gemini Override
+    # ==========================
     if ai_result:
-        ai_prediction = ai_result.get("ai_prediction") or ai_result.get("disease")
-        ai_confidence = float(ai_result.get("ai_confidence") or ai_result.get("confidence") or 0.0)
-        explanation = ai_result.get("explanation", "")
-        if ai_prediction and str(ai_prediction).lower() != "unknown" and ai_confidence >= soft_confidence + 10.0:
+
+        ai_prediction = (
+            ai_result.get("ai_prediction")
+            or ai_result.get("disease")
+        )
+
+        ai_confidence = float(
+            ai_result.get("ai_confidence")
+            or ai_result.get("confidence")
+            or 0.0
+        )
+
+        explanation = ai_result.get(
+            "explanation",
+            ""
+        )
+
+        if (
+            ai_prediction
+            and str(ai_prediction).lower() != "unknown"
+            and ai_confidence >= final_confidence + 10.0
+        ):
+
             final_class = str(ai_prediction)
             final_confidence = ai_confidence
             source = "ai_verification"
-            summary += f" AI verification favors {final_class} ({final_confidence:.1f}%)."
+
+            summary += (
+                f" AI verification favors "
+                f"{final_class} "
+                f"({final_confidence:.1f}%)."
+            )
+
         elif explanation:
-            summary += f" AI verification note: {explanation}"
+
+            summary += (
+                f" AI verification note: "
+                f"{explanation}"
+            )
 
     return {
         "summary": summary,

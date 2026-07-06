@@ -1,0 +1,251 @@
+.pmPage {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.pmHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.pmTitleWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pmTitle {
+  font-size: 28px;
+  font-weight: 900;
+  color: #111827;
+}
+
+.pmSubtitle {
+  font-size: 14px;
+  color: #6b7280;
+  font-weight: 650;
+}
+
+.glassCard {
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 14px 40px rgba(2, 6, 23, 0.35);
+  backdrop-filter: blur(6px);
+}
+
+.pmSection {
+  padding: 16px;
+}
+
+.pmSectionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.pmSectionTitle {
+  font-weight: 900;
+  color: #0f172a;
+  font-size: 18px;
+}
+
+.pmSectionHint {
+  color: #64748b;
+  font-weight: 650;
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+.pmGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.pmProfileInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pmInfoRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.pmInfoLabel {
+  color: #374151;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.pmInfoValue {
+  color: #111827;
+  font-weight: 700;
+  font-size: 14px;
+  text-align: right;
+}
+
+.pmForm {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pmFormGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pmFormLabel {
+  color: #374151;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.pmFormInput {
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(255, 255, 255, 0.75);
+  padding: 0 12px;
+  outline: none;
+  font-weight: 700;
+  color: #111827;
+  font-size: 14px;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.pmFormInput:focus {
+  border-color: rgba(59, 130, 246, 0.8);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.pmFormInput::placeholder {
+  color: #9ca3af;
+  font-weight: 600;
+}
+
+.pmBtn {
+  height: 44px;
+  padding: 0 16px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  background: rgba(59, 130, 246, 0.95);
+  color: white;
+  font-weight: 950;
+  font-size: 15px;
+  cursor: pointer;
+  transition: transform 80ms ease, opacity 140ms ease, background-color 140ms ease;
+}
+
+.pmBtn:active {
+  transform: translateY(1px);
+}
+
+.pmBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.pmBtnPrimary {
+  background: rgba(59, 130, 246, 0.95);
+  border-color: rgba(59, 130, 246, 0.95);
+  color: white;
+}
+
+.pmBtnPrimary:hover {
+  filter: brightness(1.02);
+}
+
+.pmCenter {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 280px;
+}
+
+.pmSpinner {
+  width: 34px;
+  height: 34px;
+  border-radius: 9999px;
+  border: 3px solid rgba(148, 163, 184, 0.35);
+  border-top-color: rgba(59, 130, 246, 0.95);
+  animation: pmspin 0.9s linear infinite;
+}
+
+@keyframes pmspin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.pmMuted {
+  margin-top: 12px;
+  color: #64748b;
+  font-weight: 750;
+}
+
+.pmErrorWrap {
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(185, 28, 28, 0.25);
+  background: rgba(255, 255, 255, 0.6);
+  margin-bottom: 16px;
+}
+
+.pmErrorTitle {
+  font-weight: 950;
+  color: #b91c1c;
+  font-size: 16px;
+}
+
+.pmErrorMsg {
+  margin-top: 6px;
+  color: #7f1d1d;
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.pmSuccessWrap {
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  background: rgba(255, 255, 255, 0.6);
+  margin-bottom: 16px;
+}
+
+.pmSuccessTitle {
+  font-weight: 950;
+  color: #059669;
+  font-size: 16px;
+}
+
+.pmSuccessMsg {
+  margin-top: 6px;
+  color: #065f46;
+  font-weight: 700;
+  word-break: break-word;
+}
+
+@media (max-width: 1024px) {
+  .pmGrid {
+    grid-template-columns: 1fr;
+  }
+}
