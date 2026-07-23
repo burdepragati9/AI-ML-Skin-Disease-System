@@ -77,11 +77,15 @@ def recognize_with_ai(image: Image.Image) -> dict[str, Any] | None:
                     "data": image_bytes
                 },
                 {
-                    "text": """Analyze this skin image and identify the most likely skin condition.
-                    
+                    "text": """Analyze this skin image. This ML system supports only these four skin disease classes: Acne, Psoriasis, Tinea, Vitiligo.
+
+You must select only one of these four classes.
+If the image appears to show a different skin condition that is not one of these four classes, return "Unknown".
+Never return any disease name outside this list.
+
 Respond in this exact JSON format:
 {
-    "disease": "disease name",
+    "disease": "disease name or Unknown",
     "confidence": 0.0-100.0,
     "severity": "mild/moderate/severe",
     "explanation": "brief explanation"
@@ -177,9 +181,14 @@ def verify_prediction_with_ai(
                 {
                     "text": f"""Analyze this skin image. The ML model predicted: "{ml_prediction}" with {ml_confidence:.1f}% confidence.
 
+This ML system supports only these four skin disease classes: Acne, Psoriasis, Tinea, Vitiligo.
+You must select only one of these four classes.
+If the image appears to show a different skin condition that is not one of these four classes, return "Unknown".
+Never return any disease name outside this list.
+
 Verify if this prediction is correct. Respond in this exact JSON format:
 {{
-    "disease": "your predicted disease name",
+    "disease": "your predicted disease name or Unknown",
     "confidence": 0.0-100.0,
     "agreement": true/false,
     "explanation": "brief explanation"
@@ -280,10 +289,15 @@ def verify_multi_model_predictions_with_ai(
 
 {comparison_summary}
 
+This ML system supports only these four skin disease classes: Acne, Psoriasis, Tinea, Vitiligo.
+You must select only one of these four classes.
+If the image appears to show a different skin condition that is not one of these four classes, return "Unknown".
+Never return any disease name outside this list.
+
 Based on the image analysis and model predictions, provide your final assessment.
 Respond in this exact JSON format:
 {{
-    "disease": "your final predicted disease name",
+    "disease": "your final predicted disease name or Unknown",
     "confidence": 0.0-100.0,
     "verification_source": "ML" or "AI",
     "explanation": "brief explanation of your decision"

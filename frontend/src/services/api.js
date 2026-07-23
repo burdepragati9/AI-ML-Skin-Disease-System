@@ -33,16 +33,29 @@ api.interceptors.request.use(
 
 // ==============================
 // RESPONSE INTERCEPTOR
-// Auto logout on invalid token
+// Auto logout on invalid token (not business rule violations)
 // ==============================
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error?.response?.status;
+    const detail = error?.response?.data?.detail || '';
 
-    if (status === 401 || status === 403) {
-      console.warn("[API] Unauthorized → Logging out user");
+    // Only auto-logout on actual authentication failures
+    // Do NOT logout on business rule violations like prediction limits
+    if (status === 401) {
+      console.warn("[API] Unauthorized (401) → Logging out user");
       logout();
+    } else if (status === 403) {
+      // Check if this is a business rule violation (like prediction limit)
+      // If the detail mentions 'limit' or 'free', it's not an auth failure
+      if (detail.includes('limit') || detail.includes('free') || detail.includes('prediction')) {
+        console.warn("[API] Business rule violation (403) → NOT logging out");
+        // Do NOT logout - let the component handle the error message
+      } else {
+        console.warn("[API] Unauthorized (403) → Logging out user");
+        logout();
+      }
     }
 
     return Promise.reject(error);

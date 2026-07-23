@@ -92,6 +92,12 @@ def _upgrade_existing_schema(conn: sqlite3.Connection) -> None:
         "source TEXT NOT NULL DEFAULT 'AI_FALLBACK'",
     )
     _add_column_if_missing(conn, "training_queue", "trained_at", "trained_at TEXT")
+    _add_column_if_missing(
+        conn,
+        "searches",
+        "consent_for_training",
+        "consent_for_training INTEGER NOT NULL DEFAULT 0",
+    )
 
 
 def init_db() -> None:

@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
-import jwt
+import jwt as pyjwt
 
 
 def _get_secret() -> str:
@@ -31,11 +31,11 @@ def create_access_token(*, user_id: int, email: str, role: str, expires_minutes:
         "exp": int(exp.timestamp()),
     }
 
-    return jwt.encode(payload, _get_secret(), algorithm=_get_algorithm())
+    return pyjwt.encode(payload, _get_secret(), algorithm=_get_algorithm())
 
 
 def decode_token(token: str) -> Dict[str, Any]:
-    return jwt.decode(
+    return pyjwt.decode(
         token,
         _get_secret(),
         algorithms=[_get_algorithm()],

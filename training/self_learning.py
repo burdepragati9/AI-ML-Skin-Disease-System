@@ -26,6 +26,10 @@ from utils.security import image_hash, image_hash_distance, safe_disease_slug, s
 
 from model.registry_utils import ensure_label_exists, resolve_to_canonical
 
+# The only disease classes supported by the ML system.
+# Self-learning must NOT expand this scope via AI verification results.
+SUPPORTED_CLASSES = ["Acne", "Psoriasis", "Tinea", "Vitiligo"]
+
 
 
 def _normalize_for_matching(s: str) -> str:
@@ -132,7 +136,20 @@ def save_ai_prediction_for_learning(
 
     Per requirements: AI-added images are stored inside CroppedData/<Disease>/
     and queued for training.
+
+    IMPORTANT: Only diseases in the supported 4-class scope (Acne, Psoriasis,
+    Tinea, Vitiligo) are accepted. AI predictions outside this scope are
+    rejected to prevent automatic expansion of the prediction classes.
     """
+
+    # Safety check: only allow supported 4-class diseases for self-learning.
+    if disease not in SUPPORTED_CLASSES:
+        LOGGER.warning(
+            "[Self-Learning] AI disease '%s' is outside the supported 4-class scope. "
+            "Rejecting image for self-learning to prevent class expansion.",
+            disease,
+        )
+        return {"saved": False, "duplicate": False, "path": None, "reason": "unsupported_disease"}
 
     # Resolve AI label -> canonical label (registry is source of truth).
     canonical = resolve_to_canonical(disease)

@@ -1,3 +1,4 @@
+import logging
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -15,8 +16,11 @@ from utils.prediction_comparison import (
     build_ai_verification_summary,
     compare_predictions,
     majority_vote,
+    SUPPORTED_CLASSES,
 )
 from utils.ai_recognition import verify_multi_model_predictions_with_ai
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _preprocess_image(image, target_size):
@@ -92,6 +96,41 @@ def predict_disease(image: Image.Image) -> Dict[str, Any]:
         prediction_source = ai_verification_summary.get("source")
         if not prediction_source:
             prediction_source = "soft_voting"
+
+        # =====================================================================
+        # FINAL PREDICTION SAFETY VALIDATION GATE
+        # =====================================================================
+        # Ensure the final predicted_disease is always within the supported
+        # 4-class scope. If an unsupported disease (e.g. from AI) reaches this
+        # point, fall back to the best valid ML prediction.
+        LOGGER.info("[Prediction Validation] Supported classes: %s", SUPPORTED_CLASSES)
+        LOGGER.info("[Prediction Validation] ML prediction: %s", soft.get("selected_class", "N/A"))
+        LOGGER.info("[Prediction Validation] ML confidence: %s", soft.get("selected_confidence", "N/A"))
+        LOGGER.info("[Prediction Validation] AI prediction: %s",
+                     ai_verification_summary.get("final_class", "N/A"))
+        LOGGER.info("[Prediction Validation] AI confidence: %s",
+                     ai_verification_summary.get("final_confidence", "N/A"))
+        LOGGER.info("[Prediction Validation] AI prediction valid: %s",
+                     str(predicted_disease in SUPPORTED_CLASSES).lower())
+
+        if predicted_disease not in SUPPORTED_CLASSES:
+            LOGGER.warning(
+                "[Prediction Validation] Unsupported AI disease '%s' rejected. "
+                "Falling back to valid ML prediction '%s' (confidence: %s).",
+                predicted_disease,
+                soft.get("selected_class", "Unknown"),
+                soft.get("selected_confidence", 0.0),
+            )
+            predicted_disease = soft.get("selected_class", "Unknown")
+            confidence = _safe_round(soft.get("selected_confidence", 0.0), 2)
+            prediction_source = "majority_voting"
+            # Also update ai_verification_summary so the returned dict is consistent
+            ai_verification_summary["final_class"] = predicted_disease
+            ai_verification_summary["final_confidence"] = confidence
+            ai_verification_summary["source"] = prediction_source
+
+        LOGGER.info("[Prediction Validation] Final disease: %s", predicted_disease)
+        LOGGER.info("[Prediction Validation] Final source: %s", prediction_source)
 
         # Provide full fields requested
         return {

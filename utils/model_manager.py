@@ -17,7 +17,6 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import tensorflow as tf
 import numpy as np
 
 from utils.config import AVAILABLE_MODELS, ACTIVE_MODEL
@@ -36,6 +35,13 @@ class ModelManager:
     
     def _load_models(self) -> None:
         """Load all configured models from AVAILABLE_MODELS."""
+        # Lazy import TensorFlow to avoid import errors when not needed
+        try:
+            import tensorflow as tf
+        except ImportError:
+            LOGGER.warning("TensorFlow not available. Model loading will be skipped.")
+            return
+        
         for model_name, model_config in AVAILABLE_MODELS.items():
             try:
                 model_path = Path(model_config["path"])

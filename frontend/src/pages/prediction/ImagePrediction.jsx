@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import Layout from '../../components/layout/Layout';
 import api from '../../services/api';
 import './ImagePrediction.css';
@@ -16,7 +16,13 @@ export default function ImagePrediction() {
   const [freeSearchesLeft, setFreeSearchesLeft] = useState(4);
   const [results, setResults] = useState([]);
   const [expandedCard, setExpandedCard] = useState(null);
+  const [showFaceDetectionDialog, setShowFaceDetectionDialog] = useState(false);
+  const [faceDetected, setFaceDetected] = useState(false);
 
+  // Refs to prevent duplicate API calls
+  const faceDetectionInProgressRef = useRef(false);
+  const predictionInProgressRef = useRef(false);
+  const processedFileIdsRef = useRef(new Set());
 
   const selectedCount = selectedFiles.length;
 
@@ -36,6 +42,13 @@ export default function ImagePrediction() {
     setResults([]);
     setErrorMsg('');
     setExpandedCard(null);
+    setFaceDetected(false);
+    setShowFaceDetectionDialog(false);
+    
+    // Reset refs
+    faceDetectionInProgressRef.current = false;
+    predictionInProgressRef.current = false;
+    processedFileIdsRef.current.clear();
 
     setSelectedFiles((prev) => {
       prev.forEach((f) => {
@@ -70,6 +83,7 @@ export default function ImagePrediction() {
     return () => (cancelled = true);
   }, []);
 
+
   // -------------------------
   // FILE HANDLING
   // -------------------------
@@ -77,62 +91,59 @@ export default function ImagePrediction() {
     const files = Array.from(filesList || []);
     if (!files.length) return;
 
+    console.log('[File Upload] Image selected');
+    console.log('[File Upload] Files selected:', files.length);
+    files.forEach(f => console.log('[File Upload] File name:', f.name, 'Type:', f.type, 'Size:', f.size));
+
     const filtered = files.filter((f) => ACCEPTED_TYPES.includes(f.type));
     if (filtered.length !== files.length) {
       clearAll();
       return;
     }
 
-    setSelectedFiles((prev) => {
-      const remaining = MAX_IMAGES - prev.length;
-      const toAdd = filtered.slice(0, remaining);
+    const remaining = MAX_IMAGES - selectedFiles.length;
+    const toAdd = filtered.slice(0, remaining);
+    const mapped = toAdd.map((f) => ({
+      id: `${f.name}-${f.size}-${f.lastModified}`,
+      file: f,
+      name: f.name,
+      size: f.size,
+      previewUrl: URL.createObjectURL(f),
+    }));
+    const nextFiles = [...selectedFiles, ...mapped];
 
-      const mapped = toAdd.map((f) => ({
-        id: `${f.name}-${f.size}-${f.lastModified}`,
-        file: f,
-        name: f.name,
-        size: f.size,
-        previewUrl: URL.createObjectURL(f),
-      }));
-
-      return [...prev, ...mapped];
-    });
+    mapped.forEach((f) => console.log('[File Upload] Created blob URL for', f.name, ':', f.previewUrl));
+    setSelectedFiles(nextFiles);
 
     setPredictClicked(false);
     setResults([]);
     setErrorMsg('');
+    setFaceDetected(false);
+    setShowFaceDetectionDialog(false);
   };
 
   const removeOne = (id) => {
-    setSelectedFiles((prev) => {
-      const target = prev.find((x) => x.id === id);
-      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
-      return prev.filter((x) => x.id !== id);
-    });
+    const target = selectedFiles.find((x) => x.id === id);
+    if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+
+    const nextFiles = selectedFiles.filter((x) => x.id !== id);
+    setSelectedFiles(nextFiles);
+    setFaceDetected(false);
+    setShowFaceDetectionDialog(false);
   };
 
   // -------------------------
   // 🔥 FIXED API CALL (IMPORTANT)
   // -------------------------
-  const predictSingleImage = async (fileObj, abortSignal) => {
+  const predictSingleImage = async (fileObj, abortSignal, consent) => {
   const formData = new FormData();
   formData.append("file", fileObj.file);
-
-  const token = localStorage.getItem("access_token");
-
-console.log("TOKEN =", localStorage.getItem("access_token"));
-
-console.log("AUTH HEADER =", {
-  Authorization: `Bearer ${localStorage.getItem("access_token")}`
-});
+  formData.append("consent_for_training", consent.toString());
 
   const res = await api.post(
   "/predict/predict",
   formData,
   {
-    headers: {
-      Authorization: `Bearer ${localStorage.getItem("access_token")}`
-    },
     signal: abortSignal
   }
 );
@@ -151,10 +162,102 @@ console.log("AUTH HEADER =", {
 
   return json;
 };
+
   // -------------------------
   // PREDICT HANDLER
   // -------------------------
   const handlePredict = async () => {
+    // Guard against duplicate calls
+    if (faceDetectionInProgressRef.current) {
+      console.log('[Face Detection] Detection already in progress, ignoring duplicate call');
+      return;
+    }
+    
+    if (selectedFiles.length === 0) {
+      console.log('[Face Detection] No files selected, cannot proceed');
+      return;
+    }
+
+    const fileId = selectedFiles[0].id;
+    console.log('[Face Detection] Calling backend to detect face...');
+    console.log('[Face Detection] File ID:', fileId);
+    console.log('[Face Detection] Filename:', selectedFiles[0].name);
+    
+    faceDetectionInProgressRef.current = true;
+    
+    try {
+      // Check first image for face detection
+      const formData = new FormData();
+      formData.append('file', selectedFiles[0].file);
+      
+      const res = await api.post('/predict/detect-face', formData);
+      
+      console.log('[Face Detection] Full API response:', res.data);
+      
+      // Only proceed if response is successful (HTTP 200)
+      if (res.status === 200 && res.data) {
+        const faceDetectedResult = res.data.face_detected || false;
+        
+        console.log('[Face Detection] Backend response - face_detected:', faceDetectedResult);
+        setFaceDetected(faceDetectedResult);
+        
+        if (faceDetectedResult) {
+          console.log('[Face Detection] Face detected, showing consent dialog');
+          setShowFaceDetectionDialog(true);
+        } else {
+          console.log('[Face Detection] No face detected, proceeding directly to prediction');
+          await performPrediction(false);
+        }
+      } else {
+        throw new Error('Unexpected response from face detection service');
+      }
+    } catch (error) {
+      console.error('[Face Detection] Face detection failed:', error);
+      console.error('[Face Detection] Error response:', error.response?.data);
+      console.error('[Face Detection] Error status:', error.response?.status);
+      
+      // On HTTP 500 or any error, stop prediction and show error message
+      let errorMsg;
+      if (error.response?.status === 500) {
+        errorMsg = 'Face detection service is temporarily unavailable. Please try again.';
+      } else if (error.response?.status === 401 || error.response?.status === 403) {
+        errorMsg = 'Authentication error. Please log in again.';
+      } else {
+        errorMsg = error.response?.data?.detail || error.message || 'Unable to verify whether the image contains a face. Please try again.';
+      }
+      
+      setErrorMsg(errorMsg);
+      // Do NOT call performPrediction on error
+    } finally {
+      faceDetectionInProgressRef.current = false;
+    }
+  };
+
+  const handleFaceDetectionProceed = () => {
+    console.log('[Face Detection] User clicked Continue');
+    setShowFaceDetectionDialog(false);
+    // Continue prediction and save image for future retraining
+    performPrediction(true);
+  };
+
+  const handleFaceDetectionCancel = () => {
+    console.log('[Face Detection] User clicked Cancel');
+    setShowFaceDetectionDialog(false);
+    // Continue prediction but do NOT save image for retraining
+    performPrediction(false);
+  };
+
+  const performPrediction = async (consent) => {
+    // Guard against duplicate prediction calls
+    if (predictionInProgressRef.current) {
+      console.log('[Prediction] Prediction already in progress, ignoring duplicate call');
+      return;
+    }
+    
+    console.log('[Prediction] performPrediction executed');
+    console.log('[Prediction] performPrediction consent value:', consent);
+    
+    predictionInProgressRef.current = true;
     setPredictClicked(true);
     setLoading(true);
     setErrorMsg('');
@@ -166,7 +269,17 @@ console.log("AUTH HEADER =", {
       const perImageResults = [];
 
       for (const f of selectedFiles) {
-        const prediction = await predictSingleImage(f, controller.signal);
+        // Skip if this file was already processed
+        if (processedFileIdsRef.current.has(f.id)) {
+          console.log('[Prediction] File already processed, skipping:', f.id);
+          continue;
+        }
+        
+        console.log('[Prediction] Processing file:', f.name, 'with consent:', consent);
+        const prediction = await predictSingleImage(f, controller.signal, consent);
+
+        // Mark file as processed
+        processedFileIdsRef.current.add(f.id);
 
         perImageResults.push({
           id: f.id,
@@ -179,11 +292,26 @@ console.log("AUTH HEADER =", {
 
       setResults(perImageResults);
     } catch (e) {
-      setErrorMsg(e?.message || 'Prediction failed');
+      console.error('[Prediction] Prediction failed:', e);
+      console.error('[Prediction] Error status:', e.response?.status);
+      
+      // Handle specific error cases
+      if (e.response?.status === 403) {
+        const detail = e.response?.data?.detail || '';
+        if (detail.includes('limit') || detail.includes('free')) {
+          setErrorMsg('You have reached your prediction limit.');
+        } else {
+          setErrorMsg('Authorization error. Please log in again.');
+        }
+      } else {
+        setErrorMsg(e?.message || 'Prediction failed');
+      }
+      
       setResults([]);
       setPredictClicked(false);
     } finally {
       setLoading(false);
+      predictionInProgressRef.current = false;
     }
   };
 
@@ -311,6 +439,40 @@ console.log("AUTH HEADER =", {
             <div style={{ marginTop: 12, color: 'red', fontWeight: 800 }}>{errorMsg}</div>
           )}
         </div>
+
+        {/* Face Privacy Consent Dialog */}
+        {showFaceDetectionDialog && (
+          <div className="ipConsentOverlay">
+            <div className="ipConsentDialog glassCard">
+              <div className="ipConsentTitle">Face Privacy Consent</div>
+              <div className="ipConsentMessage">
+                This uploaded image contains a visible human face.
+                <br /><br />
+                Do you want to continue with disease prediction?
+                <br /><br />
+                Continue: Prediction will save image for future AI retraining.<br />
+                Cancel: Prediction will NOT save image for retraining.
+              </div>
+              <div className="ipConsentActions">
+                <button
+                  type="button"
+                  className="ipBtn ipBtnPrimary"
+                  onClick={handleFaceDetectionProceed}
+                >
+                  Continue
+                </button>
+                <button
+                  type="button"
+                  className="ipBtn ipBtnGhost"
+                  onClick={handleFaceDetectionCancel}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
 
         {/* Empty State */}
         {selectedFiles.length === 0 && !loading && results.length === 0 && (

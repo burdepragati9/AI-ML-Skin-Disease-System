@@ -16,6 +16,10 @@ import numpy as np
 
 LOGGER = logging.getLogger(__name__)
 
+# The only disease classes supported by the ML system.
+# Gemini must not introduce diseases outside this scope.
+SUPPORTED_CLASSES = ["Acne", "Psoriasis", "Tinea", "Vitiligo"]
+
 
 def compare_predictions(model_predictions: list[dict[str, Any]]) -> dict[str, Any]:
     """Compare predictions from multiple models.
@@ -185,11 +189,11 @@ def build_ai_verification_summary(
         source = "soft_voting"
 
     # ==========================
-    # Optional Gemini Override
+    # Optional Gemini Override (with class-scope validation)
     # ==========================
     if ai_result:
 
-        ai_prediction = (
+        ai_prediction_raw = (
             ai_result.get("ai_prediction")
             or ai_result.get("disease")
         )
@@ -205,13 +209,19 @@ def build_ai_verification_summary(
             ""
         )
 
+        # Validate that AI prediction is within the supported 4-class scope
+        ai_prediction_valid = (
+            ai_prediction_raw
+            and str(ai_prediction_raw).lower() != "unknown"
+            and str(ai_prediction_raw) in SUPPORTED_CLASSES
+        )
+
         if (
-            ai_prediction
-            and str(ai_prediction).lower() != "unknown"
+            ai_prediction_valid
             and ai_confidence >= final_confidence + 10.0
         ):
 
-            final_class = str(ai_prediction)
+            final_class = str(ai_prediction_raw)
             final_confidence = ai_confidence
             source = "ai_verification"
 
@@ -219,6 +229,21 @@ def build_ai_verification_summary(
                 f" AI verification favors "
                 f"{final_class} "
                 f"({final_confidence:.1f}%)."
+            )
+
+        elif ai_prediction_raw and str(ai_prediction_raw) not in SUPPORTED_CLASSES:
+
+            LOGGER.warning(
+                "AI returned unsupported disease '%s' — "
+                "not overriding ML prediction '%s'.",
+                ai_prediction_raw,
+                final_class,
+            )
+
+            summary += (
+                f" AI returned unsupported disease "
+                f"'{ai_prediction_raw}' — "
+                f"keeping ML prediction '{final_class}'."
             )
 
         elif explanation:

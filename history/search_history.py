@@ -1,9 +1,15 @@
+import logging
 from pathlib import Path
 from typing import Any
 
 from database.db import execute, fetch_all, fetch_one, utc_now
 from utils.config import UPLOAD_HISTORY_PATH
 from utils.security import image_hash, safe_disease_slug, save_optimized_image
+
+# The only disease classes supported by the ML system.
+SUPPORTED_CLASSES = ["Acne", "Psoriasis", "Tinea", "Vitiligo"]
+
+LOGGER = logging.getLogger(__name__)
 
 
 def record_search(
@@ -17,14 +23,32 @@ def record_search(
     ai_fallback_status: str = "not_used",
     retraining_status: str = "not_required",
     ensemble_metadata: dict[str, Any] | None = None,
+    consent_for_training: bool = False,
 ) -> int:
+    # Safety validation: ensure the stored disease is within supported scope.
+    # This is a defense-in-depth check; validated predictions should already
+    # be within scope by the time they reach this layer.
+    if disease not in SUPPORTED_CLASSES:
+        LOGGER.warning(
+            "[Search History] Attempted to store unsupported disease '%s'. "
+            "This should not happen — prediction should have been validated upstream. "
+            "Falling back to 'Unknown' to avoid corrupting history.",
+            disease,
+        )
+        disease = "Unknown"
+
     disease_name = safe_disease_slug(disease)
     img_hash = image_hash(image)
-    image_path = save_optimized_image(
-        image,
-        UPLOAD_HISTORY_PATH / disease_name,
-        f"search_{disease_name}",
-    )
+    
+    # Only save image if consent is given
+    if consent_for_training:
+        image_path = save_optimized_image(
+            image,
+            UPLOAD_HISTORY_PATH / disease_name,
+            f"search_{disease_name}",
+        )
+    else:
+        image_path = None
 
     # Requirement: store image_name (uploaded filename).
     image_name = (image_name or "").strip() or None
@@ -44,14 +68,15 @@ def record_search(
             densenet_prediction, densenet_confidence,
             ensemble_prediction, ensemble_confidence,
             ai_verification_summary, model_agreement, model_predictions_json,
+            consent_for_training,
             created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             doctor_pk,
             disease_name,
-            str(image_path),
+            str(image_path) if image_path else None,
             img_hash,
             image_name,
             float(confidence),
@@ -69,6 +94,7 @@ def record_search(
             ensemble_metadata.get("ai_verification_summary"),
             ensemble_metadata.get("model_agreement"),
             ensemble_metadata.get("model_predictions_json"),
+            1 if consent_for_training else 0,
             utc_now(),
         ),
     )
