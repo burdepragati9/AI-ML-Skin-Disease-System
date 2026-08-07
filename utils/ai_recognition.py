@@ -12,6 +12,7 @@ All AI requests are sanitized to remove PII before sending to external APIs.
 import base64
 import io
 import logging
+import traceback
 from typing import Any
 
 import google.generativeai as genai
@@ -29,10 +30,16 @@ if GEMINI_API_KEY:
 
 def _image_to_base64(image: Image.Image) -> str:
     """Convert PIL Image to base64 string for API transmission."""
-    buffered = io.BytesIO()
-    image.save(buffered, format="JPEG")
-    img_str = base64.b64encode(buffered.getvalue()).decode()
+    img_str = base64.b64encode(_image_to_jpeg_bytes(image)).decode()
     return img_str
+
+
+def _image_to_jpeg_bytes(image: Image.Image) -> bytes:
+    """Encode an RGB working copy as JPEG without mutating the uploaded image."""
+    buffered = io.BytesIO()
+    image_for_jpeg = image if image.mode == "RGB" else image.convert("RGB")
+    image_for_jpeg.save(buffered, format="JPEG")
+    return buffered.getvalue()
 
 
 def _sanitize_ai_request_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -64,10 +71,7 @@ def recognize_with_ai(image: Image.Image) -> dict[str, Any] | None:
     try:
         model = genai.GenerativeModel(GEMINI_MODEL_NAME)
         
-        # Convert image to bytes
-        buffered = io.BytesIO()
-        image.save(buffered, format="JPEG")
-        image_bytes = buffered.getvalue()
+        image_bytes = _image_to_jpeg_bytes(image)
         
         # Create sanitized payload - only image data, no PII
         payload = {
@@ -166,10 +170,7 @@ def verify_prediction_with_ai(
     try:
         model = genai.GenerativeModel(GEMINI_MODEL_NAME)
         
-        # Convert image to bytes
-        buffered = io.BytesIO()
-        image.save(buffered, format="JPEG")
-        image_bytes = buffered.getvalue()
+        image_bytes = _image_to_jpeg_bytes(image)
         
         # Create sanitized payload - only image and ML prediction, no PII
         payload = {
@@ -248,108 +249,103 @@ Only respond with the JSON, no additional text."""
         LOGGER.error(f"AI verification failed: {exc}")
         return None
 
+print("\n========== verify_multi_model_predictions_with_ai CALLED ==========")
 
 def verify_multi_model_predictions_with_ai(
     image: Image.Image,
     model_predictions: list[dict[str, Any]],
     comparison_summary: str
 ) -> dict[str, Any] | None:
-    """Verify multi-model predictions using AI for improved accuracy.
-    
-    This function is called after multi-model prediction to provide AI verification
-    of the ensemble results. It analyzes all model outputs and suggests the best prediction.
-    
-    Args:
-        image: PIL Image of the skin condition
-        model_predictions: List of prediction results from multiple models
-        comparison_summary: Formatted summary of model comparisons
-        
-    Returns:
-        dict with keys:
-            - ai_prediction: Disease predicted by AI
-            - ai_confidence: Confidence score from AI (0-100)
-            - verification_source: "ML" or "AI" based on which to trust
-            - explanation: AI's explanation
-        or None if verification fails
     """
+    Verify multi-model predictions using Gemini AI.
+    """
+
     if not GEMINI_API_KEY:
-        LOGGER.warning("GEMINI_API_KEY not configured, AI verification unavailable")
+        LOGGER.warning("GEMINI_API_KEY not configured.")
         return None
-    
+
     try:
+        print("\n========== GEMINI DEBUG ==========")
+        print("API KEY PRESENT :", bool(GEMINI_API_KEY))
+        print("API KEY PREFIX  :", GEMINI_API_KEY[:10] if GEMINI_API_KEY else "None")
+        print("API KEY LENGTH  :", len(GEMINI_API_KEY) if GEMINI_API_KEY else 0)
+        print("MODEL NAME      :", GEMINI_MODEL_NAME)
+        print("genai module    :", genai.__file__)
+        print("==================================\n")
+
+        # Configure Gemini again to ensure runtime uses the latest key
+        genai.configure(api_key=GEMINI_API_KEY)
+
         model = genai.GenerativeModel(GEMINI_MODEL_NAME)
-        
-        # Convert image to bytes
-        buffered = io.BytesIO()
-        image.save(buffered, format="JPEG")
-        image_bytes = buffered.getvalue()
-        
-        # Create sanitized payload - only image and model predictions, no PII
-        prompt_text = f"""Analyze this skin image and verify the multi-model predictions.
+
+        image_bytes = _image_to_jpeg_bytes(image)
+
+        prompt_text = f"""
+Analyze this skin image and verify the multi-model predictions.
 
 {comparison_summary}
 
-This ML system supports only these four skin disease classes: Acne, Psoriasis, Tinea, Vitiligo.
-You must select only one of these four classes.
-If the image appears to show a different skin condition that is not one of these four classes, return "Unknown".
-Never return any disease name outside this list.
+This ML system supports only these four diseases:
 
-Based on the image analysis and model predictions, provide your final assessment.
-Respond in this exact JSON format:
+- Acne
+- Psoriasis
+- Tinea
+- Vitiligo
+
+If the disease is outside this list return "Unknown".
+
+Respond ONLY in JSON.
+
 {{
-    "disease": "your final predicted disease name or Unknown",
-    "confidence": 0.0-100.0,
-    "verification_source": "ML" or "AI",
-    "explanation": "brief explanation of your decision"
+    "disease":"Acne",
+    "confidence":95,
+    "verification_source":"ML",
+    "explanation":"..."
 }}
+"""
 
-Only respond with the JSON, no additional text."""
-        
-        payload = {
-            "parts": [
-                {
-                    "mime_type": "image/jpeg",
-                    "data": image_bytes
-                },
-                {
-                    "text": prompt_text
-                }
-            ]
-        }
-        
-        # Sanitize payload to ensure no PII is sent
-        sanitized_payload = _sanitize_ai_request_payload(payload)
-        
-        # Call Gemini API
+        print("Sending request to Gemini...")
+
+        print(type(image_bytes))
+        print(len(image_bytes))
+        print(prompt_text)
+
         response = model.generate_content(
-            [sanitized_payload["parts"][0], sanitized_payload["parts"][1]["text"]]
-        )
-        
-        # Parse response
-        result_text = response.text.strip()
-        
-        # Try to extract JSON from response
+    [
+        image,
+        prompt_text,
+    ]
+)
+
+        print("Gemini response received.")
+        print(response.text)
+
         import json
         import re
-        
-        # Find JSON in response
-        json_match = re.search(r'\{[^}]+\}', result_text, re.DOTALL)
+
+        result_text = response.text.strip()
+
+        json_match = re.search(r"\{.*\}", result_text, re.DOTALL)
+
         if json_match:
             result_text = json_match.group(0)
-        
+
         result = json.loads(result_text)
-        
-        ai_disease = result.get("disease", "Unknown")
-        ai_confidence = float(result.get("confidence", 0) or 0)
-        verification_source = result.get("verification_source", "ML")
-        
+
         return {
-            "ai_prediction": ai_disease,
-            "ai_confidence": ai_confidence,
-            "verification_source": verification_source,
-            "explanation": result.get("explanation", "")
+            "ai_prediction": result.get("disease", "Unknown"),
+            "ai_confidence": float(result.get("confidence", 0)),
+            "verification_source": result.get("verification_source", "ML"),
+            "explanation": result.get("explanation", ""),
         }
-        
-    except Exception as exc:
-        LOGGER.error(f"Multi-model AI verification failed: {exc}")
+
+    except Exception:
+        print("\n========== GEMINI EXCEPTION ==========")
+        traceback.print_exc()
+        print("API KEY :", GEMINI_API_KEY[:10] if GEMINI_API_KEY else "None")
+        print("MODEL   :", GEMINI_MODEL_NAME)
+        print("======================================\n")
+
+        LOGGER.exception("Multi-model AI verification failed")
+
         return None

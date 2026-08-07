@@ -5,6 +5,18 @@ import Layout from '../components/layout/Layout';
 import api from '../services/api';
 import './DoctorDashboard.css';
 
+// Module-level singleton promise so React StrictMode's double effect fire
+// (and any concurrent mounts) result in a single /dashboard/doctor request.
+let dashboardRequestPromise = null;
+const loadDoctorDashboard = () => {
+  if (!dashboardRequestPromise) {
+    dashboardRequestPromise = api.get('/dashboard/doctor').finally(() => {
+      dashboardRequestPromise = null;
+    });
+  }
+  return dashboardRequestPromise;
+};
+
 const rechartsTheme = {
   axisText: '#94a3b8',
   grid: 'rgba(148, 163, 184, 0.16)',
@@ -138,7 +150,7 @@ export default function DoctorDashboard() {
       setError('');
 
       try {
-        const response = await api.get('/dashboard/doctor');
+        const response = await loadDoctorDashboard();
         if (cancelled) return;
 
         const data = response.data || {};
@@ -384,14 +396,6 @@ export default function DoctorDashboard() {
                 <tbody>
                   {history.rows.map((r, idx) => {
                     const item = r;
-                    console.log("Dashboard Prediction Item:", item);
-                    console.log("Prediction Image Fields:", {
-                      image_url: item?.image_url,
-                      image_path: item?.image_path,
-                      image_name: item?.image_name,
-                      filename: item?.filename,
-                      full_item: item,
-                    });
 
                     const API_BASE_URL = 'http://127.0.0.1:8000';
                     const imageUrlFromBackend = item?.image_url;

@@ -1,13 +1,14 @@
 import { Navigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 
-import api from "../../services/api";
 import { getToken, getUserRole, logout } from "../../services/auth";
+import { validateSessionOnce } from "../../services/session";
 
 export default function ProtectedRoute({ allowedRoles, children }) {
 
   const [verified, setVerified] = useState(false);
   const [allowed, setAllowed] = useState(false);
+  const allowedRolesKey = (allowedRoles || []).join("|");
 
   useEffect(() => {
     let cancelled = false;
@@ -25,7 +26,7 @@ export default function ProtectedRoute({ allowedRoles, children }) {
 
       try {
         // Validate token + session
-        await api.get("/auth/me");
+        await validateSessionOnce();
 
         const role = getUserRole();
         if (!allowedRoles || allowedRoles.length === 0) {
@@ -54,7 +55,7 @@ export default function ProtectedRoute({ allowedRoles, children }) {
     return () => {
       cancelled = true;
     };
-  }, [allowedRoles]);
+  }, [allowedRolesKey]);
 
   if (!verified) return null;
 

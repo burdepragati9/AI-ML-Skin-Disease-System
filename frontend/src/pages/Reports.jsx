@@ -336,13 +336,24 @@ export default function Reports() {
   };
 
   const getImageUrlFromCaseItem = (caseItem) => {
-    // Prefer backend-provided image_path if available
-    const imageUrlFromPath = getImageUrl(caseItem?.image_path);
-    if (imageUrlFromPath) return imageUrlFromPath;
+    // Prefer backend-provided image_url (already converted to a public URL)
+    if (caseItem?.image_url) {
+      console.log('[Reports] Using backend image_url:', caseItem.image_url);
+      return caseItem.image_url;
+    }
 
-    // If backend only provides image_name, build the URL using the existing uploads endpoint
-    if (!caseItem?.image_name) return null;
-    return `http://127.0.0.1:8000/uploads/${caseItem.image_name}`;
+    // Fallback: convert stored filesystem path to public URL
+    const imageUrlFromPath = getImageUrl(caseItem?.image_path);
+    if (imageUrlFromPath) {
+      console.log('[Reports] Derived URL from image_path:', imageUrlFromPath);
+      return imageUrlFromPath;
+    }
+
+    // Last resort: if backend only provides image_name, do NOT build a URL
+    // from the original uploaded filename (that file was never saved with
+    // that name). Return null so the placeholder is shown instead of a 404.
+    console.warn('[Reports] No usable image URL for case:', caseItem);
+    return null;
   };
 
   // Get doctor info from auth/me endpoint

@@ -178,6 +178,12 @@ def run_multi_model_workflow(image, image_array) -> dict:
     external_ai_result = None
     if ENABLE_AI_VERIFICATION and len(model_predictions) > 1:
         try:
+            print("\n========== BEFORE GEMINI CALL ==========")
+            print("comparison_summary =", comparison_summary)
+            print("model_predictions =", model_predictions)
+            print("image type =", type(image))
+            print("========================================")
+            
             external_ai_result = verify_multi_model_predictions_with_ai(
                 image,
                 model_predictions,

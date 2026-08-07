@@ -18,8 +18,8 @@ import ManageDoctors from "./pages/admin/ManageDoctors";
 import SystemMonitoring from "./pages/admin/SystemMonitoring";
 
 
-import api from "./services/api";
 import { getToken, logout } from "./services/auth";
+import { validateSessionOnce } from "./services/session";
 
 
 function SessionKeeper() {
@@ -30,8 +30,7 @@ function SessionKeeper() {
     const token = getToken();
     if (!token) return;
 
-    api
-      .get("/auth/me")
+    validateSessionOnce()
       .catch(() => {
         logout();
       });

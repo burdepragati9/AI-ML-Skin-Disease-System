@@ -158,4 +158,3 @@ def predict_disease(image: Image.Image) -> Dict[str, Any]:
             "comparison": {},
             "available_models": [],
         }
-

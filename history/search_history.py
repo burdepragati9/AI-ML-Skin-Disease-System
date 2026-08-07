@@ -11,6 +11,10 @@ SUPPORTED_CLASSES = ["Acne", "Psoriasis", "Tinea", "Vitiligo"]
 
 LOGGER = logging.getLogger(__name__)
 
+# Ensure the uploads directory exists at import time so StaticFiles can serve it.
+UPLOAD_HISTORY_PATH.mkdir(parents=True, exist_ok=True)
+LOGGER.info("[Search History] Upload directory: %s", UPLOAD_HISTORY_PATH.resolve())
+
 
 def record_search(
     doctor_pk: int | None,
@@ -39,16 +43,24 @@ def record_search(
 
     disease_name = safe_disease_slug(disease)
     img_hash = image_hash(image)
-    
-    # Only save image if consent is given
-    if consent_for_training:
-        image_path = save_optimized_image(
-            image,
-            UPLOAD_HISTORY_PATH / disease_name,
-            f"search_{disease_name}",
-        )
-    else:
-        image_path = None
+
+    # Always save the uploaded image so it can be displayed in Reports/History.
+    # consent_for_training only controls whether the image is used for
+    # self-learning/training — it must NOT prevent the image from being
+    # persisted for display. Never delete this image after prediction.
+    image_path = save_optimized_image(
+        image,
+        UPLOAD_HISTORY_PATH / disease_name,
+        f"search_{disease_name}",
+    )
+
+    LOGGER.info(
+        "[Search History] Saved image: original=%s saved=%s abs=%s exists=%s",
+        image_name,
+        image_path.name if image_path else None,
+        str(image_path.resolve()) if image_path else None,
+        image_path.exists() if image_path else False,
+    )
 
     # Requirement: store image_name (uploaded filename).
     image_name = (image_name or "").strip() or None

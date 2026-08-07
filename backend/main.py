@@ -9,9 +9,13 @@ from backend.routes.profile import router as profile_router
 from backend.routes.admin import router as admin_router
 from utils.config import UPLOAD_HISTORY_PATH, PROJECT_ROOT
 
+# Ensure the uploads directory exists before StaticFiles is mounted.
+UPLOAD_HISTORY_PATH.mkdir(parents=True, exist_ok=True)
+print(f"[main] Upload directory (absolute): {UPLOAD_HISTORY_PATH.resolve()}")
+print(f"[main] Upload directory exists: {UPLOAD_HISTORY_PATH.exists()}")
 
 
-def create_app() -> FastAPI:
+def create_app() -> FastAPI():
 
     app = FastAPI(title="Skin Disease Detection API")
 

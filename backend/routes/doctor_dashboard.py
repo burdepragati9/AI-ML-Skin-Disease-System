@@ -85,41 +85,6 @@ def get_doctor_dashboard_aggregated(user=Depends(get_current_user)):
     history_limit = 10
     rows = recent_searches(doctor_id, limit=history_limit, offset=0, disease="")
 
-    prediction_history = [
-        {
-            "image_name": r["image_name"] if "image_name" in r.keys() else None,
-            "predicted_disease": r["disease"] if "disease" in r.keys() else None,
-            "confidence_score": r["confidence"] if "confidence" in r.keys() else None,
-            "prediction_source": r["prediction_source"] if "prediction_source" in r.keys() else None,
-            "timestamp": r["created_at"] if "created_at" in r.keys() else None,
-            "image_path": r["image_path"] if "image_path" in r.keys() else None,
-        }
-        for r in [dict(rr) if not isinstance(rr, dict) else rr for rr in (rows or [])]
-    ]
-
-
-
-    # Most searched diseases/images and AI vs ML distribution.
-    most_searched_diseases = [
-        {
-            "disease": x["disease"] if "disease" in x.keys() else None,
-            "count": x["count"] if "count" in x.keys() else None,
-        }
-        for x in [dict(xx) if not isinstance(xx, dict) else xx for xx in (d.get("diseases", []) or [])]
-    ]
-
-
-
-    ai_vs_ml = [
-        {
-            "prediction_source": x["prediction_source"] if "prediction_source" in x.keys() else None,
-            "count": x["count"] if "count" in x.keys() else None,
-        }
-        for x in [dict(xx) if not isinstance(xx, dict) else xx for xx in (d.get("sources", []) or [])]
-    ]
-
-
-
     def to_upload_url(image_path: str | None) -> str | None:
         """Convert stored filesystem path to a public URL for FastAPI StaticFiles.
 
@@ -146,6 +111,47 @@ def get_doctor_dashboard_aggregated(user=Depends(get_current_user)):
 
         rel_part = image_path.replace('\\', '/')[idx + len(marker):]
         return f"http://127.0.0.1:8000/uploads/{rel_part}"
+
+    prediction_history = []
+    for r in [dict(rr) if not isinstance(rr, dict) else rr for rr in (rows or [])]:
+        image_path = r.get("image_path")
+        image_url = to_upload_url(image_path)
+        prediction_history.append(
+            {
+                "image_name": r.get("image_name"),
+                "predicted_disease": r.get("disease"),
+                "confidence_score": r.get("confidence"),
+                "prediction_source": r.get("prediction_source"),
+                "timestamp": r.get("created_at"),
+                "image_path": image_path,
+                "image_url": image_url,
+            }
+        )
+        print(
+            f"[reports] db_filename={r.get('image_name')} "
+            f"db_image_path={image_path} image_url={image_url}"
+        )
+
+
+
+    # Most searched diseases/images and AI vs ML distribution.
+    most_searched_diseases = [
+        {
+            "disease": x["disease"] if "disease" in x.keys() else None,
+            "count": x["count"] if "count" in x.keys() else None,
+        }
+        for x in [dict(xx) if not isinstance(xx, dict) else xx for xx in (d.get("diseases", []) or [])]
+    ]
+
+
+
+    ai_vs_ml = [
+        {
+            "prediction_source": x["prediction_source"] if "prediction_source" in x.keys() else None,
+            "count": x["count"] if "count" in x.keys() else None,
+        }
+        for x in [dict(xx) if not isinstance(xx, dict) else xx for xx in (d.get("sources", []) or [])]
+    ]
 
     most_searched_images = []
     for x in (d.get("images", []) or []):

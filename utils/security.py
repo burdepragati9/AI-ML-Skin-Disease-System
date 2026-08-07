@@ -65,5 +65,11 @@ def save_optimized_image(image: Image.Image, target_dir: Path, prefix: str) -> P
     target_dir.mkdir(parents=True, exist_ok=True)
     filename = secure_filename(f"{prefix}_{uuid.uuid4().hex[:10]}.jpg")
     path = target_dir / filename
-    image.convert("RGB").save(path, format="JPEG", quality=88, optimize=True)
+
+    # JPEG does not support 'P' (palette), 'RGBA', or 'L' (grayscale) modes
+    # natively. Convert a working copy to RGB before encoding to avoid the
+    # "cannot write mode P as JPEG" error. The original uploaded image is
+    # intentionally left untouched.
+    rgb_image = image.convert("RGB")
+    rgb_image.save(path, format="JPEG", quality=88, optimize=True)
     return path

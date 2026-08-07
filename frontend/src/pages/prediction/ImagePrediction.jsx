@@ -7,6 +7,35 @@ const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/jpg'];
 const MAX_IMAGES = 4;
 const MIN_IMAGES = 1;
 
+let dashboardRequestPromise = null;
+let dashboardCache = null;
+
+const createUploadId = () => {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+};
+
+const loadDoctorDashboardOnce = async () => {
+  if (dashboardCache) return dashboardCache;
+  if (!dashboardRequestPromise) {
+    dashboardRequestPromise = api.get('/dashboard/doctor').then((res) => {
+      dashboardCache = res;
+      return res;
+    }).finally(() => {
+      dashboardRequestPromise = null;
+    });
+  }
+  return dashboardRequestPromise;
+};
+
+/**
+ * Invalidate the cached dashboard response so the next load fetches fresh data
+ * (e.g. after predictions consume free searches).
+ */
+const invalidateDashboardCache = () => {
+  dashboardCache = null;
+};
+
 export default function ImagePrediction() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [predictClicked, setPredictClicked] = useState(false);
@@ -16,13 +45,18 @@ export default function ImagePrediction() {
   const [freeSearchesLeft, setFreeSearchesLeft] = useState(4);
   const [results, setResults] = useState([]);
   const [expandedCard, setExpandedCard] = useState(null);
-  const [showFaceDetectionDialog, setShowFaceDetectionDialog] = useState(false);
-  const [faceDetected, setFaceDetected] = useState(false);
 
-  // Refs to prevent duplicate API calls
-  const faceDetectionInProgressRef = useRef(false);
-  const predictionInProgressRef = useRef(false);
-  const processedFileIdsRef = useRef(new Set());
+  // Per-image face detection and consent tracking with promise-based dialog
+  const [showFaceDetectionDialog, setShowFaceDetectionDialog] = useState(false);
+  const consentResolveRef = useRef(null);
+  const [dialogFileName, setDialogFileName] = useState('');
+
+  // Ref to prevent duplicate predict button clicks while a run is in progress.
+  // We intentionally do NOT track "processed" file ids across runs, because
+  // each Predict click must re-run the full Upload → Face Detection → Consent
+  // → Prediction flow for every selected image. Skipping previously processed
+  // ids caused missing result cards on retry.
+  const predictRunInProgressRef = useRef(false);
 
   const selectedCount = selectedFiles.length;
 
@@ -42,13 +76,11 @@ export default function ImagePrediction() {
     setResults([]);
     setErrorMsg('');
     setExpandedCard(null);
-    setFaceDetected(false);
     setShowFaceDetectionDialog(false);
-    
-    // Reset refs
-    faceDetectionInProgressRef.current = false;
-    predictionInProgressRef.current = false;
-    processedFileIdsRef.current.clear();
+    consentResolveRef.current = null;
+
+    // Reset the run-in-progress guard so a fresh Predict run can start.
+    predictRunInProgressRef.current = false;
 
     setSelectedFiles((prev) => {
       prev.forEach((f) => {
@@ -67,7 +99,7 @@ export default function ImagePrediction() {
     async function loadDashboard() {
       setDashboardLoading(true);
       try {
-        const res = await api.get('/dashboard/doctor');
+        const res = await loadDoctorDashboardOnce();
         const data = res?.data || {};
         const left = Number(data.free_searches_left ?? 0);
 
@@ -91,10 +123,6 @@ export default function ImagePrediction() {
     const files = Array.from(filesList || []);
     if (!files.length) return;
 
-    console.log('[File Upload] Image selected');
-    console.log('[File Upload] Files selected:', files.length);
-    files.forEach(f => console.log('[File Upload] File name:', f.name, 'Type:', f.type, 'Size:', f.size));
-
     const filtered = files.filter((f) => ACCEPTED_TYPES.includes(f.type));
     if (filtered.length !== files.length) {
       clearAll();
@@ -104,21 +132,22 @@ export default function ImagePrediction() {
     const remaining = MAX_IMAGES - selectedFiles.length;
     const toAdd = filtered.slice(0, remaining);
     const mapped = toAdd.map((f) => ({
-      id: `${f.name}-${f.size}-${f.lastModified}`,
+      id: createUploadId(),
       file: f,
       name: f.name,
       size: f.size,
       previewUrl: URL.createObjectURL(f),
+      face_detected: null,
+      detector_used: null,
+      consent_required: null,
+      consent_given: null,
+      prediction: null,
     }));
-    const nextFiles = [...selectedFiles, ...mapped];
-
-    mapped.forEach((f) => console.log('[File Upload] Created blob URL for', f.name, ':', f.previewUrl));
-    setSelectedFiles(nextFiles);
+    setSelectedFiles((prev) => [...prev, ...mapped]);
 
     setPredictClicked(false);
     setResults([]);
     setErrorMsg('');
-    setFaceDetected(false);
     setShowFaceDetectionDialog(false);
   };
 
@@ -128,138 +157,97 @@ export default function ImagePrediction() {
 
     const nextFiles = selectedFiles.filter((x) => x.id !== id);
     setSelectedFiles(nextFiles);
-    setFaceDetected(false);
     setShowFaceDetectionDialog(false);
+  };
+
+  // -------------------------
+  // 🔥 Challenge user for consent via promise-based dialog
+  // -------------------------
+  const updateImageState = (id, patch) => {
+    setSelectedFiles((prev) => (
+      prev.map((item) => (item.id === id ? { ...item, ...patch } : item))
+    ));
+  };
+
+  const waitForConsent = (fileName) => {
+    return new Promise((resolve) => {
+      consentResolveRef.current = resolve;
+      setDialogFileName(fileName);
+      setShowFaceDetectionDialog(true);
+    });
+  };
+
+  const handleFaceDetectionProceed = () => {
+    setShowFaceDetectionDialog(false);
+    // User clicked Continue: set isPredicting=true and resume the prediction
+    // flow so the prediction API is called only now.
+    setLoading(true);
+    if (consentResolveRef.current) {
+      consentResolveRef.current(true);
+      consentResolveRef.current = null;
+    }
+  };
+
+  const handleFaceDetectionCancel = () => {
+    setShowFaceDetectionDialog(false);
+    // User clicked Cancel: reset loading state and do not call the prediction
+    // API. The prediction flow will detect the false consent value and stop.
+    setLoading(false);
+    setPredictClicked(false);
+    if (consentResolveRef.current) {
+      consentResolveRef.current(false);
+      consentResolveRef.current = null;
+    }
   };
 
   // -------------------------
   // 🔥 FIXED API CALL (IMPORTANT)
   // -------------------------
   const predictSingleImage = async (fileObj, abortSignal, consent) => {
-  const formData = new FormData();
-  formData.append("file", fileObj.file);
-  formData.append("consent_for_training", consent.toString());
+    const formData = new FormData();
+    formData.append("file", fileObj.file);
+    formData.append("consent_for_training", consent.toString());
 
-  const res = await api.post(
-  "/predict/predict",
-  formData,
-  {
-    signal: abortSignal
-  }
-);
-
-  console.log("[PREDICT RESPONSE]", res.data);
-
-  const json = res?.data;
-
-  if (!json || json.status !== "success") {
-    throw new Error(
-      json?.detail ||
-      json?.message ||
-      "Backend error"
+    const res = await api.post(
+      "/predict/predict",
+      formData,
+      {
+        signal: abortSignal
+      }
     );
-  }
 
-  return json;
-};
+    const json = res?.data;
+
+    if (!json || json.status !== "success") {
+      throw new Error(
+        json?.detail ||
+        json?.message ||
+        "Backend error"
+      );
+    }
+
+    return json;
+  };
 
   // -------------------------
-  // PREDICT HANDLER
+  // PREDICT HANDLER with per-image face detection
   // -------------------------
   const handlePredict = async () => {
-    // Guard against duplicate calls
-    if (faceDetectionInProgressRef.current) {
-      console.log('[Face Detection] Detection already in progress, ignoring duplicate call');
+    // Guard against duplicate concurrent Predict runs (e.g. double-click).
+    if (predictRunInProgressRef.current) {
       return;
     }
-    
+
     if (selectedFiles.length === 0) {
-      console.log('[Face Detection] No files selected, cannot proceed');
       return;
     }
 
-    const fileId = selectedFiles[0].id;
-    console.log('[Face Detection] Calling backend to detect face...');
-    console.log('[Face Detection] File ID:', fileId);
-    console.log('[Face Detection] Filename:', selectedFiles[0].name);
-    
-    faceDetectionInProgressRef.current = true;
-    
-    try {
-      // Check first image for face detection
-      const formData = new FormData();
-      formData.append('file', selectedFiles[0].file);
-      
-      const res = await api.post('/predict/detect-face', formData);
-      
-      console.log('[Face Detection] Full API response:', res.data);
-      
-      // Only proceed if response is successful (HTTP 200)
-      if (res.status === 200 && res.data) {
-        const faceDetectedResult = res.data.face_detected || false;
-        
-        console.log('[Face Detection] Backend response - face_detected:', faceDetectedResult);
-        setFaceDetected(faceDetectedResult);
-        
-        if (faceDetectedResult) {
-          console.log('[Face Detection] Face detected, showing consent dialog');
-          setShowFaceDetectionDialog(true);
-        } else {
-          console.log('[Face Detection] No face detected, proceeding directly to prediction');
-          await performPrediction(false);
-        }
-      } else {
-        throw new Error('Unexpected response from face detection service');
-      }
-    } catch (error) {
-      console.error('[Face Detection] Face detection failed:', error);
-      console.error('[Face Detection] Error response:', error.response?.data);
-      console.error('[Face Detection] Error status:', error.response?.status);
-      
-      // On HTTP 500 or any error, stop prediction and show error message
-      let errorMsg;
-      if (error.response?.status === 500) {
-        errorMsg = 'Face detection service is temporarily unavailable. Please try again.';
-      } else if (error.response?.status === 401 || error.response?.status === 403) {
-        errorMsg = 'Authentication error. Please log in again.';
-      } else {
-        errorMsg = error.response?.data?.detail || error.message || 'Unable to verify whether the image contains a face. Please try again.';
-      }
-      
-      setErrorMsg(errorMsg);
-      // Do NOT call performPrediction on error
-    } finally {
-      faceDetectionInProgressRef.current = false;
-    }
-  };
-
-  const handleFaceDetectionProceed = () => {
-    console.log('[Face Detection] User clicked Continue');
-    setShowFaceDetectionDialog(false);
-    // Continue prediction and save image for future retraining
-    performPrediction(true);
-  };
-
-  const handleFaceDetectionCancel = () => {
-    console.log('[Face Detection] User clicked Cancel');
-    setShowFaceDetectionDialog(false);
-    // Continue prediction but do NOT save image for retraining
-    performPrediction(false);
-  };
-
-  const performPrediction = async (consent) => {
-    // Guard against duplicate prediction calls
-    if (predictionInProgressRef.current) {
-      console.log('[Prediction] Prediction already in progress, ignoring duplicate call');
-      return;
-    }
-    
-    console.log('[Prediction] performPrediction executed');
-    console.log('[Prediction] performPrediction consent value:', consent);
-    
-    predictionInProgressRef.current = true;
+    predictRunInProgressRef.current = true;
     setPredictClicked(true);
-    setLoading(true);
+    // NOTE: Do NOT set loading=true here. Loading (and the "Predicting..."
+    // button state) must only be enabled once we are actually about to call
+    // the prediction API. While the Face Privacy Consent dialog is open, the
+    // UI must remain idle so the user can make a decision first.
     setErrorMsg('');
     setResults([]);
 
@@ -269,32 +257,88 @@ export default function ImagePrediction() {
       const perImageResults = [];
 
       for (const f of selectedFiles) {
-        // Skip if this file was already processed
-        if (processedFileIdsRef.current.has(f.id)) {
-          console.log('[Prediction] File already processed, skipping:', f.id);
-          continue;
+        // Step 1: Detect face for this exact image (one intentional call).
+        const detectFormData = new FormData();
+        detectFormData.append('file', f.file);
+
+        const detectRes = await api.post('/predict/detect-face', detectFormData);
+
+        if (detectRes.status !== 200 || !detectRes.data) {
+          throw new Error("Face detection failed for " + f.name);
         }
-        
-        console.log('[Prediction] Processing file:', f.name, 'with consent:', consent);
-        const prediction = await predictSingleImage(f, controller.signal, consent);
 
-        // Mark file as processed
-        processedFileIdsRef.current.add(f.id);
+        // Read the exact backend response contract fields.
+        const faceDetectedResult = detectRes.data.face_detected === true;
+        const detectorUsed = detectRes.data.detector_used || "unknown";
+        const consentRequired = detectRes.data.consent_required === true;
 
+        updateImageState(f.id, {
+          face_detected: faceDetectedResult,
+          detector_used: detectorUsed,
+          consent_required: consentRequired,
+        });
+        // Step 2: Determine consent for this exact image.
+        let consentForThisImage = false;
+
+        if (consentRequired) {
+          // Pause the prediction flow completely while the consent dialog is
+          // open. Do NOT show a loading spinner, do NOT change the Predict
+          // button to "Predicting...", and do NOT call /predict/predict.
+          setLoading(false);
+          consentForThisImage = await waitForConsent(f.name);
+
+          if (!consentForThisImage) {
+            // User clicked Cancel: close popup, reset loading state, and do
+            // NOT call the prediction API for this (or any remaining) image.
+            updateImageState(f.id, { consent_given: false });
+            break;
+          }
+        }
+        updateImageState(f.id, { consent_given: consentForThisImage });
+
+        // Step 3: Predict for this exact image with its individual consent
+        // value. Only now (after consent is given or not required) do we set
+        // loading=true and call the prediction API.
+        setLoading(true);
+        const prediction = await predictSingleImage(f, controller.signal, consentForThisImage);
+        updateImageState(f.id, { prediction });
+
+        // Build the result object keyed by the stable image id so the result
+        // card is always bound to the exact same image that was uploaded.
         perImageResults.push({
           id: f.id,
           imagePreviewUrl: f.previewUrl,
           imageName: f.name,
           timestamp: new Date().toISOString(),
           prediction,
+          faceDetected: faceDetectedResult,
+          detectorUsed,
+          consentRequired,
+          consentGiven: consentForThisImage,
         });
       }
 
       setResults(perImageResults);
+
+      // Predictions consume free searches; refresh the cached dashboard count.
+      invalidateDashboardCache();
+      try {
+        const res = await loadDoctorDashboardOnce();
+        const left = Number(res?.data?.free_searches_left ?? 0);
+        setFreeSearchesLeft(Number.isFinite(left) ? left : 0);
+      } catch {
+        /* non-fatal: leave previous count as-is */
+      }
     } catch (e) {
       console.error('[Prediction] Prediction failed:', e);
-      console.error('[Prediction] Error status:', e.response?.status);
-      
+
+      // Make sure the consent dialog is never left open after an error.
+      setShowFaceDetectionDialog(false);
+      if (consentResolveRef.current) {
+        consentResolveRef.current(false);
+        consentResolveRef.current = null;
+      }
+
       // Handle specific error cases
       if (e.response?.status === 403) {
         const detail = e.response?.data?.detail || '';
@@ -306,12 +350,12 @@ export default function ImagePrediction() {
       } else {
         setErrorMsg(e?.message || 'Prediction failed');
       }
-      
+
       setResults([]);
       setPredictClicked(false);
     } finally {
       setLoading(false);
-      predictionInProgressRef.current = false;
+      predictRunInProgressRef.current = false;
     }
   };
 
@@ -446,7 +490,9 @@ export default function ImagePrediction() {
             <div className="ipConsentDialog glassCard">
               <div className="ipConsentTitle">Face Privacy Consent</div>
               <div className="ipConsentMessage">
-                This uploaded image contains a visible human face.
+                Image: <strong>{dialogFileName}</strong>
+                <br /><br />
+                This image contains a visible human face.
                 <br /><br />
                 Do you want to continue with disease prediction?
                 <br /><br />
@@ -481,7 +527,7 @@ export default function ImagePrediction() {
               <div className="ipEmptyStateIcon">🔬</div>
               <div className="ipEmptyStateTitle">No Images Uploaded Yet</div>
               <div className="ipEmptyStateText">
-                Upload skin condition images to get AI-powered disease predictions. 
+                Upload skin condition images to get AI-powered disease predictions.
                 Our medical AI system will analyze your images and provide detailed diagnostic insights.
               </div>
             </div>
@@ -510,9 +556,6 @@ export default function ImagePrediction() {
                 const predictionSource = r.prediction?.prediction_source || 'unknown';
                 const finalClass = aiVerification?.final_class || predicted;
                 const finalConfidence = aiVerification?.final_confidence || confidencePct;
-
-                console.log('[Prediction UI debug] prediction.prediction_source =', r?.prediction?.prediction_source);
-                console.log('[Prediction UI debug] timestamp =', r?.timestamp);
 
                 const getSourceBadgeClass = (source) => {
                   const classes = {
@@ -561,6 +604,14 @@ export default function ImagePrediction() {
                         </div>
                       </div>
 
+                      <div className="ipInfoRow">
+                        <div className="ipInfoLabel">Face Detected / Consent</div>
+                        <div className="ipInfoValue">
+                          <span className={`ipSourceBadge ${r.faceDetected ? '' : ''}`}>
+                            {r.faceDetected ? 'Face ✓' : 'No Face'} / {r.consentGiven ? 'Consent ✓' : 'No Consent'}
+                          </span>
+                        </div>
+                      </div>
 
                       <div className="ipConfidenceBar">
                         <div className="ipConfidenceTrack">
@@ -619,7 +670,7 @@ export default function ImagePrediction() {
                             </div>
                             <div className="ipModelCompareFooter">
                               <div className="ipModelCompareLine" style={{ color: '#111827' }}>
-                                {majorityVote.selected_class || 'N/A'} ({majorityVote.vote_count || 0} votes)
+                                {majorityVote.selected_class || 'N/A'} ({majorityVote.supporting_models?.length || (majorityVote.vote_counts?.[majorityVote.selected_class] || 0)} votes)
                               </div>
                             </div>
                           </div>
