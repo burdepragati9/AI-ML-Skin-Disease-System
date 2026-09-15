@@ -179,11 +179,11 @@ export default function ImagePrediction() {
 
   const handleFaceDetectionProceed = () => {
     setShowFaceDetectionDialog(false);
-    // User clicked Continue: set isPredicting=true and resume the prediction
-    // flow so the prediction API is called only now.
-    setLoading(true);
+    // User clicked Cancel: consent for training is denied.
+    // Disease prediction must still continue, but the image must not
+    // be stored or used for future training.
     if (consentResolveRef.current) {
-      consentResolveRef.current(true);
+      consentResolveRef.current(false);
       consentResolveRef.current = null;
     }
   };
@@ -192,8 +192,6 @@ export default function ImagePrediction() {
     setShowFaceDetectionDialog(false);
     // User clicked Cancel: reset loading state and do not call the prediction
     // API. The prediction flow will detect the false consent value and stop.
-    setLoading(false);
-    setPredictClicked(false);
     if (consentResolveRef.current) {
       consentResolveRef.current(false);
       consentResolveRef.current = null;
@@ -291,7 +289,7 @@ export default function ImagePrediction() {
             // User clicked Cancel: close popup, reset loading state, and do
             // NOT call the prediction API for this (or any remaining) image.
             updateImageState(f.id, { consent_given: false });
-            break;
+        
           }
         }
         updateImageState(f.id, { consent_given: consentForThisImage });
