@@ -4,6 +4,10 @@ from typing import Optional
 
 from backend.security.dependencies import get_current_user, require_role
 from database.db import fetch_one, execute, utc_now
+from utils.queries import (
+    GET_DOCTOR_PROFILE,
+    CHECK_DOCTOR_EXISTS,
+)
 
 
 router = APIRouter()
@@ -27,8 +31,7 @@ def get_profile(user=Depends(get_current_user)):
     doctor_id = int(user["id"])
     
     doctor = fetch_one(
-        "SELECT id, full_name, doctor_id, specialization, clinic_name, email, phone, "
-        "profile_photo, experience, location, created_at, updated_at FROM doctors WHERE id = ?",
+        GET_DOCTOR_PROFILE,
         (doctor_id,)
     )
     
@@ -57,7 +60,7 @@ def update_profile(profile_data: ProfileUpdate, user=Depends(get_current_user)):
     doctor_id = int(user["id"])
     
     # Check if doctor exists
-    existing = fetch_one("SELECT id FROM doctors WHERE id = ?", (doctor_id,))
+    existing = fetch_one(CHECK_DOCTOR_EXISTS, (doctor_id,))
     if not existing:
         raise HTTPException(status_code=404, detail="Doctor profile not found")
     

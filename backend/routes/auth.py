@@ -18,6 +18,7 @@ from backend.services.doctor_auth import (
 )
 from backend.services.admin_auth import admin_authenticate
 from backend.security.dependencies import get_current_user
+from utils.queries import GET_DOCTOR_PROFILE_BY_ID
 
 
 router = APIRouter()
@@ -107,7 +108,7 @@ def me(user=Depends(get_current_user)):
     if user.get("role") == "doctor":
         from database.db import fetch_one
         doctor_row = fetch_one(
-            "SELECT full_name, specialization, clinic_name, email, phone, experience, location FROM doctors WHERE id = ?",
+            GET_DOCTOR_PROFILE_BY_ID,
             (int(user["id"]),)
         )
         print("Doctor Row:", doctor_row)

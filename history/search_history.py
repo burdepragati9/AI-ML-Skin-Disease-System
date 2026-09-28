@@ -5,6 +5,14 @@ from typing import Any
 from database.db import execute, fetch_all, fetch_one, utc_now
 from utils.config import UPLOAD_HISTORY_PATH
 from utils.security import image_hash, safe_disease_slug, save_optimized_image
+from utils.queries import (
+    INSERT_SEARCH_HISTORY,
+    GET_RECENT_SEARCHES,
+    COUNT_DOCTOR_SEARCHES,
+    GET_DOCTOR_DISEASE_STATS,
+    GET_DOCTOR_SOURCE_STATS,
+    GET_DOCTOR_TOP_IMAGES,
+)
 
 # The only disease classes supported by the ML system.
 SUPPORTED_CLASSES = ["Acne", "Psoriasis", "Tinea", "Vitiligo"]
@@ -69,22 +77,7 @@ def record_search(
     ensemble_metadata = ensemble_metadata or {}
     per_model = ensemble_metadata.get("per_model", {})
     return execute(
-        """
-        INSERT INTO searches (
-            doctor_id, disease, image_path, image_hash, image_name,
-            confidence, prediction_source,
-            ai_fallback_status, retraining_status,
-            mobilenet_prediction, mobilenet_confidence,
-
-            efficientnet_prediction, efficientnet_confidence,
-            densenet_prediction, densenet_confidence,
-            ensemble_prediction, ensemble_confidence,
-            ai_verification_summary, model_agreement, model_predictions_json,
-            consent_for_training,
-            created_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
+        INSERT_SEARCH_HISTORY,
         (
             doctor_pk,
             disease_name,
@@ -121,47 +114,25 @@ def recent_searches(doctor_pk: int, limit: int = 10, offset: int = 0, disease: s
         params.append(f"%{disease}%")
     params.extend([limit, offset])
     return fetch_all(
-        f"""
-        SELECT * FROM searches
-        {where}
-        ORDER BY created_at DESC
-        LIMIT ? OFFSET ?
-        """,
-        params,
-    )
+    GET_RECENT_SEARCHES.format(
+        where_clause=where
+    ),
+    params,
+)
 
 
 def doctor_search_stats(doctor_pk: int) -> dict:
-    total = fetch_one("SELECT COUNT(*) AS c FROM searches WHERE doctor_id = ?", (doctor_pk,))["c"]
+    total = fetch_one(COUNT_DOCTOR_SEARCHES, (doctor_pk,))["c"]
     diseases = fetch_all(
-        """
-        SELECT disease, COUNT(*) AS count
-        FROM searches
-        WHERE doctor_id = ?
-        GROUP BY disease
-        ORDER BY count DESC
-        LIMIT 10
-        """,
+        GET_DOCTOR_DISEASE_STATS,
         (doctor_pk,),
     )
     sources = fetch_all(
-        """
-        SELECT prediction_source, COUNT(*) AS count
-        FROM searches
-        WHERE doctor_id = ?
-        GROUP BY prediction_source
-        """,
+        GET_DOCTOR_SOURCE_STATS,
         (doctor_pk,),
     )
     images = fetch_all(
-        """
-        SELECT disease, image_path, COUNT(*) AS count
-        FROM searches
-        WHERE doctor_id = ?
-        GROUP BY image_hash
-        ORDER BY count DESC
-        LIMIT 6
-        """,
+        GET_DOCTOR_TOP_IMAGES,
         (doctor_pk,),
     )
     return {"total": total, "diseases": diseases, "sources": sources, "images": images}

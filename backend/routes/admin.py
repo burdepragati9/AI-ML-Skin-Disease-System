@@ -1,6 +1,11 @@
 from fastapi import APIRouter, Depends
 from analytics.admin_analytics import admin_summary, ai_recognized_images, training_status
 from database.db import fetch_all, fetch_one
+from utils.queries import (
+    GET_ALL_DOCTORS,
+    COUNT_DOCTOR_SEARCHES,
+    GET_RECENT_TRAINING_LOGS,
+)
 from backend.security.dependencies import get_current_user, require_role
 
 router = APIRouter()
@@ -32,29 +37,14 @@ def get_training_status(user=Depends(get_current_user)):
 @router.get("/doctors", dependencies=[Depends(require_role("admin"))])
 def get_all_doctors(user=Depends(get_current_user)):
     """Get all registered doctors with their total images analyzed."""
-    doctors = fetch_all(
-        """
-        SELECT 
-            id,
-            full_name as doctor_name,
-            email,
-            specialization,
-            created_at
-        FROM doctors
-        ORDER BY created_at DESC
-        """
-    )
+    doctors = fetch_all(GET_ALL_DOCTORS)
     
     # Calculate total images analyzed for each doctor
     doctors_with_stats = []
     for doctor in doctors:
         doctor_id = doctor["id"]
         total_images = fetch_one(
-            """
-            SELECT COUNT(*) as count
-            FROM searches
-            WHERE doctor_id = ?
-            """,
+            COUNT_DOCTOR_SEARCHES,
             (doctor_id,)
         )["count"]
         
@@ -73,23 +63,7 @@ def get_all_doctors(user=Depends(get_current_user)):
 @router.get("/training-logs", dependencies=[Depends(require_role("admin"))])
 def get_training_logs(user=Depends(get_current_user)):
     """Get recent training logs."""
-    logs = fetch_all(
-        """
-        SELECT 
-            id,
-            event_type,
-            status,
-            disease,
-            accuracy_before,
-            accuracy_after,
-            message,
-            image_path,
-            created_at
-        FROM training_logs
-        ORDER BY created_at DESC
-        LIMIT 20
-        """
-    )
+    logs = fetch_all(GET_RECENT_TRAINING_LOGS)
     
     return [
         {

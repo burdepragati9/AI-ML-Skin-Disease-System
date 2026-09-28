@@ -9,11 +9,22 @@ import bcrypt
 from database.db import ensure_usage_row, execute, fetch_one, utc_now
 from utils.config import FREE_SEARCH_LIMIT
 from utils.security import sanitize_text
-
+from utils.queries import (
+    GET_LAST_DOCTOR_ID,
+    INSERT_DOCTOR,
+    GET_DOCTOR_BY_EMAIL,
+    UPDATE_DOCTOR_PROFILE,
+    GET_DOCTOR_ID_BY_EMAIL,
+    UPDATE_DOCTOR_RESET_TOKEN,
+    GET_DOCTOR_BY_RESET_TOKEN,
+    RESET_DOCTOR_PASSWORD,
+    GET_FREE_SEARCH_USAGE,
+    CONSUME_FREE_SEARCH,
+)
 
 def _generate_next_doctor_id() -> str:
     """Create the next doctor_id from the most recently stored doctor_id."""
-    row = fetch_one("SELECT doctor_id FROM doctors ORDER BY id DESC LIMIT 1")
+    row = fetch_one(GET_LAST_DOCTOR_ID)
     if not row or not sanitize_text(row["doctor_id"]):
         return "DOC001"
 
@@ -58,13 +69,7 @@ def create_doctor(profile: dict, password: str) -> int:
     doctor_id = _generate_next_doctor_id()
 
     doctor_pk = execute(
-        """
-        INSERT INTO doctors (
-            full_name, doctor_id, specialization, clinic_name, email, phone,
-            profile_photo, experience, location, password_hash, created_at, updated_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
+        INSERT_DOCTOR,
         (
             sanitize_text(profile["full_name"]),
             doctor_id,
@@ -87,7 +92,7 @@ def create_doctor(profile: dict, password: str) -> int:
 
 def authenticate_doctor(email: str, password: str) -> Optional[dict]:
     row = fetch_one(
-        "SELECT * FROM doctors WHERE email = ?",
+        GET_DOCTOR_BY_EMAIL,
         (sanitize_text(email.lower(), 180),),
     )
     if not row:
@@ -102,13 +107,7 @@ def authenticate_doctor(email: str, password: str) -> Optional[dict]:
 
 def update_doctor_profile(doctor_pk: int, profile: dict) -> None:
     execute(
-        """
-        UPDATE doctors
-        SET full_name = ?, specialization = ?, clinic_name = ?, phone = ?,
-            profile_photo = COALESCE(NULLIF(?, ''), profile_photo),
-            experience = ?, location = ?, updated_at = ?
-        WHERE id = ?
-        """,
+        UPDATE_DOCTOR_PROFILE,
         (
             sanitize_text(profile.get("full_name", "")),
             sanitize_text(profile.get("specialization", "")),
@@ -125,7 +124,7 @@ def update_doctor_profile(doctor_pk: int, profile: dict) -> None:
 
 def create_reset_token(email: str) -> Optional[str]:
     row = fetch_one(
-        "SELECT id FROM doctors WHERE email = ?",
+        GET_DOCTOR_ID_BY_EMAIL,
         (sanitize_text(email.lower(), 180),),
     )
     if not row:
@@ -135,7 +134,7 @@ def create_reset_token(email: str) -> Optional[str]:
     expires = (datetime.utcnow() + timedelta(hours=1)).isoformat(timespec="seconds")
 
     execute(
-        "UPDATE doctors SET reset_token = ?, reset_expires_at = ?, updated_at = ? WHERE id = ?",
+        UPDATE_DOCTOR_RESET_TOKEN,
         (token, expires, utc_now(), row["id"]),
     )
     return token
@@ -146,7 +145,7 @@ def reset_password(token: str, new_password: str) -> bool:
         raise ValueError("Password must be at least 8 characters.")
 
     row = fetch_one(
-        "SELECT * FROM doctors WHERE reset_token = ?",
+        GET_DOCTOR_BY_RESET_TOKEN,
         (sanitize_text(token, 255),),
     )
     if not row or not row["reset_expires_at"]:
@@ -156,11 +155,7 @@ def reset_password(token: str, new_password: str) -> bool:
         return False
 
     execute(
-        """
-        UPDATE doctors
-        SET password_hash = ?, reset_token = NULL, reset_expires_at = NULL, updated_at = ?
-        WHERE id = ?
-        """,
+        RESET_DOCTOR_PASSWORD,
         (
             _hash_password_bcrypt(new_password),
             utc_now(),
@@ -173,7 +168,7 @@ def reset_password(token: str, new_password: str) -> bool:
 def usage_for_doctor(doctor_pk: int) -> dict:
     ensure_usage_row(doctor_pk)
     row = fetch_one(
-        "SELECT * FROM free_search_usage WHERE doctor_id = ?",
+        GET_FREE_SEARCH_USAGE,
         (doctor_pk,),
     )
     used = int(row["used_count"])
@@ -190,11 +185,7 @@ def assert_can_search(doctor_pk: int) -> None:
 def consume_search(doctor_pk: int) -> None:
     assert_can_search(doctor_pk)
     execute(
-        """
-        UPDATE free_search_usage
-        SET used_count = used_count + 1, updated_at = ?
-        WHERE doctor_id = ?
-        """,
+        CONSUME_FREE_SEARCH,
         (utc_now(), doctor_pk),
     )
 

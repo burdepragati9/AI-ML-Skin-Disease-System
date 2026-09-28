@@ -1,14 +1,32 @@
 from datetime import datetime, timedelta
 
 from database.db import fetch_all, fetch_one
+from utils.queries import (
+    GET_LATEST_TRAINING_LOG,
+    COUNT_QUEUED_TRAINING,
+    COUNT_PROCESSING_TRAINING,
+    COUNT_COMPLETED_TRAINING,
+    COUNT_FAILED_TRAINING,
+    COUNT_NEWLY_LEARNED_IMAGES,
+    GET_AI_RECOGNIZED_IMAGES,
+    COUNT_TOTAL_AI_PREDICTIONS,
+    COUNT_RETRAINED_IMAGES,
+    GET_MOST_COMMON_AI_DISEASE,
+    GET_LATEST_ACCURACY,
+    GET_PREDICTION_SOURCE_COUNTS,
+    GET_DISEASE_COUNTS,
+    GET_PREDICTION_SOURCE_COUNTS_BY_TIME,
+    GET_DISEASE_FREQUENCY_BY_TIME,
+)
 
 
 def training_status() -> dict:
-    last_log = fetch_one("SELECT * FROM training_logs ORDER BY created_at DESC LIMIT 1")
-    queued = fetch_one("SELECT COUNT(*) AS c FROM training_queue WHERE status = 'queued'")["c"]
-    processing = fetch_one("SELECT COUNT(*) AS c FROM training_queue WHERE status = 'processing'")["c"]
-    completed = fetch_one("SELECT COUNT(*) AS c FROM training_queue WHERE status = 'completed'")["c"]
-    failed = fetch_one("SELECT COUNT(*) AS c FROM training_queue WHERE status = 'failed'")["c"]
+    last_log = fetch_one(GET_LATEST_TRAINING_LOG)
+    queued = fetch_one(COUNT_QUEUED_TRAINING)["c"]
+    processing = fetch_one(COUNT_PROCESSING_TRAINING)["c"]
+    completed = fetch_one(COUNT_COMPLETED_TRAINING)["c"]
+    failed = fetch_one(COUNT_FAILED_TRAINING)["c"]
+
     return {
         "last_log": dict(last_log) if last_log else None,
         "queued": queued,
@@ -19,64 +37,36 @@ def training_status() -> dict:
 
 
 def newly_learned_images_count() -> int:
-    return int(fetch_one("SELECT COUNT(*) AS c FROM ai_predictions WHERE duplicate_of IS NULL")["c"])
-
+    return int(fetch_one(COUNT_NEWLY_LEARNED_IMAGES)["c"])
 
 def ai_recognized_images(limit: int = 100):
     return fetch_all(
-        """
-        SELECT image_name, image_path, predicted_disease, confidence, source, created_at
-        FROM ai_predictions
-        ORDER BY created_at DESC
-        LIMIT ?
-        """,
+        GET_AI_RECOGNIZED_IMAGES,
         (limit,),
     )
 
 
 def admin_summary() -> dict:
     """Backwards-compatible admin summary (all-time)."""
-    total_ai = fetch_one("SELECT COUNT(*) AS c FROM ai_predictions")["c"]
+    total_ai = fetch_one(COUNT_TOTAL_AI_PREDICTIONS)["c"]
 
-    retrained = fetch_one("SELECT COUNT(*) AS c FROM training_queue WHERE status = 'completed'")["c"]
-    common = fetch_one(
-        """
-        SELECT predicted_disease, COUNT(*) AS count
-        FROM ai_predictions
-        WHERE duplicate_of IS NULL
-        GROUP BY predicted_disease
-        ORDER BY count DESC
-        LIMIT 1
-        """
-    )
-    latest_accuracy = fetch_one(
-        """
-        SELECT accuracy_before, accuracy_after
-        FROM training_logs
-        WHERE accuracy_after IS NOT NULL
-        ORDER BY created_at DESC
-        LIMIT 1
-        """
-    )
-    source_counts = fetch_all(
-        """
-        SELECT prediction_source, COUNT(*) AS count
-        FROM searches
-        GROUP BY prediction_source
-        """
-    )
-    disease_counts = fetch_all(
-        """
-        SELECT disease, COUNT(*) AS count
-        FROM searches
-        GROUP BY disease
-        ORDER BY count DESC
-        LIMIT 10
-        """
-    )
+    retrained = fetch_one(COUNT_RETRAINED_IMAGES)["c"]
+
+    common = fetch_one(GET_MOST_COMMON_AI_DISEASE)
+
+    latest_accuracy = fetch_one(GET_LATEST_ACCURACY)
+
+    source_counts = fetch_all(GET_PREDICTION_SOURCE_COUNTS)
+
+    disease_counts = fetch_all(GET_DISEASE_COUNTS)
+
     improvement = 0.0
     if latest_accuracy:
-        improvement = float(latest_accuracy["accuracy_after"] or 0) - float(latest_accuracy["accuracy_before"] or 0)
+        improvement = (
+            float(latest_accuracy["accuracy_after"] or 0)
+            - float(latest_accuracy["accuracy_before"] or 0)
+        )
+
     return {
         "total_ai": total_ai,
         "retrained": retrained,
@@ -85,7 +75,7 @@ def admin_summary() -> dict:
         "source_counts": source_counts,
         "disease_counts": disease_counts,
     }
-
+    
 
 def _time_window_start(period: str) -> str | None:
     """Return ISO timestamp lower bound for SQLite comparisons."""
@@ -109,40 +99,32 @@ def admin_prediction_source_counts_by_time(period: str):
 
     where = ""
     params: list = []
+
     if start_ts:
         where = "WHERE created_at >= ?"
         params.append(start_ts)
 
     return fetch_all(
-        f"""
-        SELECT prediction_source, COUNT(*) AS count
-        FROM searches
-        {where}
-        GROUP BY prediction_source
-        ORDER BY count DESC
-        """,
+        GET_PREDICTION_SOURCE_COUNTS_BY_TIME.format(
+            where_clause=where
+        ),
         tuple(params),
     )
-
-
+    
 def admin_disease_frequency_by_time(period: str):
     start_ts = _time_window_start(period)
 
     where = ""
     params: list = []
+
     if start_ts:
         where = "WHERE created_at >= ?"
         params.append(start_ts)
 
     return fetch_all(
-        f"""
-        SELECT disease, COUNT(*) AS count
-        FROM searches
-        {where}
-        GROUP BY disease
-        ORDER BY count DESC
-        LIMIT 10
-        """,
+        GET_DISEASE_FREQUENCY_BY_TIME.format(
+            where_clause=where
+        ),
         tuple(params),
     )
 
@@ -152,10 +134,11 @@ def admin_summary_by_time(period: str) -> dict:
     disease_counts = admin_disease_frequency_by_time(period)
     source_counts = admin_prediction_source_counts_by_time(period)
 
-    total_ai = fetch_one("SELECT COUNT(*) AS c FROM ai_predictions")["c"]
+    total_ai = fetch_one(COUNT_TOTAL_AI_PREDICTIONS)["c"]
+
     return {
         "total_ai": total_ai,
         "disease_counts": disease_counts,
         "source_counts": source_counts,
     }
-
+    

@@ -8,6 +8,11 @@ from pathlib import Path
 
 from database.db import fetch_one, execute, init_db, utc_now
 from utils.security import sanitize_text
+from utils.queries import (
+    GET_ADMIN_BY_EMAIL,
+    GET_ADMIN_ID_BY_EMAIL,
+    INSERT_ADMIN,
+)
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(_PROJECT_ROOT / ".env")
@@ -85,7 +90,7 @@ def admin_authenticate(email: str, password: str) -> Optional[dict]:
         return None
 
     try:
-        row = fetch_one("SELECT * FROM admins WHERE email = ?", (email_s,))
+        row = fetch_one(GET_ADMIN_BY_EMAIL, (email_s,))
         if not row:
             return None
         if not _verify_password_bcrypt(password, row.get("password_hash")):
@@ -103,15 +108,12 @@ def admin_create_demo_if_missing() -> None:
         return
 
     try:
-        row = fetch_one("SELECT id FROM admins WHERE email = ?", (sanitize_text(email.lower(), 180),))
+        row = fetch_one(GET_ADMIN_ID_BY_EMAIL, (sanitize_text(email.lower(), 180),))
         if row:
             return
 
         execute(
-            """
-            INSERT INTO admins (email, password_hash, full_name, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?)
-            """,
+            INSERT_ADMIN,
             (
                 sanitize_text(email.lower(), 180),
                 _hash_password_bcrypt(password),

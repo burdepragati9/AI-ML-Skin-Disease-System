@@ -6,6 +6,7 @@ from backend.services.prediction_service import predict_disease
 from backend.services.detect_face import detect_face_details
 from backend.security.dependencies import get_current_user, require_role
 from history.search_history import record_search
+from utils.queries import COUNT_DOCTOR_SEARCHES_FOR_LIMIT
 
 
 router = APIRouter()
@@ -35,7 +36,7 @@ async def predict(
 
     # Enforce limit using existing searches table.
     used_searches_row = fetch_one(
-        "SELECT COUNT(*) AS c FROM searches WHERE doctor_id = ?",
+        COUNT_DOCTOR_SEARCHES_FOR_LIMIT,
         (doctor_id,),
     )
     used_searches = int(used_searches_row["c"] or 0) if used_searches_row else 0
