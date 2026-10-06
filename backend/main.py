@@ -15,7 +15,7 @@ print(f"[main] Upload directory (absolute): {UPLOAD_HISTORY_PATH.resolve()}")
 print(f"[main] Upload directory exists: {UPLOAD_HISTORY_PATH.exists()}")
 
 
-def create_app() -> FastAPI():
+def create_app() -> FastAPI:
 
     app = FastAPI(title="Skin Disease Detection API")
 

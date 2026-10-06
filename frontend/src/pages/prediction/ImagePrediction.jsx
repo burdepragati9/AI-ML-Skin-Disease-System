@@ -10,6 +10,37 @@ const MIN_IMAGES = 1;
 let dashboardRequestPromise = null;
 let dashboardCache = null;
 
+/* =========================
+   Timestamp Formatter
+   ========================= */
+function formatTimestamp(timestamp) {
+  if (!timestamp) return 'N/A';
+
+  let value = timestamp;
+
+  if (
+    typeof value === 'string' &&
+    /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(value)
+  ) {
+    value = value.replace(' ', 'T') + 'Z';
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return 'N/A';
+
+  return date.toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  });
+}
+
 const createUploadId = () => {
   if (window.crypto?.randomUUID) return window.crypto.randomUUID();
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -578,7 +609,7 @@ export default function ImagePrediction() {
                         <div className="ipPredName" title={r.imageName}>
                           {r.imageName}
                         </div>
-                        <div className="ipPredSubtle">{new Date(r.timestamp).toLocaleString()}</div>
+                        <div className="ipPredSubtle">{formatTimestamp(r.timestamp)}</div>
                       </div>
                     </div>
 

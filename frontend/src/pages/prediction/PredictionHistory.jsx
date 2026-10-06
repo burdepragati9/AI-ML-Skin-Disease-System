@@ -35,7 +35,32 @@ function fmtConfidence(confidence) {
 
 function formatTimestamp(timestamp) {
   if (!timestamp) return 'N/A';
-  return new Date(timestamp).toLocaleString();
+
+  let value = timestamp;
+
+  // If the backend sends a UTC timestamp without a timezone,
+  // explicitly interpret it as UTC.
+  if (
+    typeof value === 'string' &&
+    /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(value)
+  ) {
+    value = value.replace(' ', 'T') + 'Z';
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return 'N/A';
+
+  return date.toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  });
 }
 
 function getSourceBadgeColor(source) {

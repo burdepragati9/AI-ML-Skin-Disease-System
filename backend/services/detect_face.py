@@ -27,6 +27,8 @@ import numpy as np
 from PIL import Image
 from typing import Union, Tuple, Optional
 import cv2
+import traceback
+from insightface.app import FaceAnalysis
 
 # ---------------------------------------------------------------------------
 # Singleton detector instance
@@ -224,18 +226,23 @@ def is_face_complete(
     Rules:
         - Invalid/empty bbox -> reject
         - Very small bbox -> reject
-        - Very large false-positive regions -> reject
+        - Very large invalid regions -> reject
         - RetinaFace boundary-touching bbox -> reject
         - MediaPipe boundary-touching bbox -> allow for landmark validation
+        - MediaPipe small bbox overflow -> allow
 
     IMPORTANT:
         For MediaPipe, bbox validation is only the first stage.
-        Landmark validation must decide whether the detected region is
-        actually a complete recognizable face.
+        Landmark validation must decide whether the detected region
+        represents a complete recognizable face.
     """
 
     try:
         x1, y1, x2, y2 = face_bbox
+
+        # -------------------------------------------------------------
+        # Basic image validation
+        # -------------------------------------------------------------
 
         if image_width <= 0 or image_height <= 0:
             print(
@@ -243,6 +250,10 @@ def is_face_complete(
                 f"REJECTED: invalid image dimensions"
             )
             return False
+
+        # -------------------------------------------------------------
+        # Basic bbox validation
+        # -------------------------------------------------------------
 
         face_width = x2 - x1
         face_height = y2 - y1
@@ -253,6 +264,10 @@ def is_face_complete(
                 f"REJECTED: invalid bbox dimensions"
             )
             return False
+
+        # -------------------------------------------------------------
+        # Ratios
+        # -------------------------------------------------------------
 
         image_area = image_width * image_height
         face_area = face_width * face_height
@@ -292,33 +307,72 @@ def is_face_complete(
         )
 
         # -------------------------------------------------------------
-        # Completely invalid overflow
+        # Boundary / overflow validation
+        #
+        # MediaPipe can produce a bbox that extends a few pixels
+        # outside the image, especially for close-up faces.
+        #
+        # Example:
+        # image width = 640
+        # bbox x2    = 647
+        #
+        # This is only 7 pixels outside and should NOT be rejected.
         # -------------------------------------------------------------
 
-        if (
-            x1 < -5
-            or y1 < -5
-            or x2 > image_width + 5
-            or y2 > image_height + 5
-        ):
+        if detector_name == "MediaPipe":
+
+            # Allow small detector rounding / boundary overflow.
+            MEDIAPIPE_OVERFLOW_TOLERANCE = 20
+
+            if (
+                x1 < -MEDIAPIPE_OVERFLOW_TOLERANCE
+                or
+                y1 < -MEDIAPIPE_OVERFLOW_TOLERANCE
+                or
+                x2 > image_width + MEDIAPIPE_OVERFLOW_TOLERANCE
+                or
+                y2 > image_height + MEDIAPIPE_OVERFLOW_TOLERANCE
+            ):
+                print(
+                    f"[{detector_name}][is_face_complete] "
+                    f"REJECTED: bbox extends too far outside image"
+                )
+                return False
+
             print(
                 f"[{detector_name}][is_face_complete] "
-                f"REJECTED: bbox extends too far outside image"
+                f"MediaPipe boundary overflow accepted "
+                f"(tolerance={MEDIAPIPE_OVERFLOW_TOLERANCE}px)"
             )
-            return False
+
+        else:
+
+            # RetinaFace remains strict.
+            if (
+                x1 < -10
+                or
+                y1 < -10
+                or
+                x2 > image_width + 10
+                or
+                y2 > image_height + 10
+            ):
+                print(
+                    f"[{detector_name}][is_face_complete] "
+                    f"REJECTED: bbox extends too far outside image"
+                )
+                return False
 
         # -------------------------------------------------------------
-        # Minimum size
+        # Minimum face size
         # -------------------------------------------------------------
 
         min_face_width = (
-            image_width *
-            MIN_FACE_DIM_RATIO
+            image_width * MIN_FACE_DIM_RATIO
         )
 
         min_face_height = (
-            image_height *
-            MIN_FACE_DIM_RATIO
+            image_height * MIN_FACE_DIM_RATIO
         )
 
         if (
@@ -333,7 +387,7 @@ def is_face_complete(
             return False
 
         # -------------------------------------------------------------
-        # Minimum area
+        # Minimum face area
         # -------------------------------------------------------------
 
         if area_ratio < MIN_FACE_AREA_RATIO:
@@ -361,6 +415,7 @@ def is_face_complete(
         )
 
         if touches_boundary:
+
             boundaries = []
 
             if touches_left:
@@ -383,8 +438,7 @@ def is_face_complete(
             )
 
             # ---------------------------------------------------------
-            # RetinaFace:
-            # Keep primary detector strict.
+            # RetinaFace remains strict
             # ---------------------------------------------------------
 
             if detector_name == "RetinaFace":
@@ -395,25 +449,23 @@ def is_face_complete(
                 return False
 
             # ---------------------------------------------------------
-            # MediaPipe:
+            # MediaPipe
+            #
             # DO NOT reject here.
             #
-            # Landmark validation will decide whether the region
-            # actually represents a complete face.
+            # Landmark validation must decide whether the detected
+            # region is actually a complete human face.
             # ---------------------------------------------------------
 
             if detector_name == "MediaPipe":
                 print(
                     f"[{detector_name}][is_face_complete] "
-                    f"Boundary touched -> "
-                    f"allowing landmark validation to decide"
+                    f"Boundary touched -> allowing landmark "
+                    f"validation to decide"
                 )
 
         # -------------------------------------------------------------
         # Maximum size protection
-        #
-        # Do not use 95% here for MediaPipe, because a legitimate
-        # close-up face may occupy almost the complete image.
         # -------------------------------------------------------------
 
         if (
@@ -426,6 +478,10 @@ def is_face_complete(
                 f"REJECTED: bbox dimensions invalid"
             )
             return False
+
+        # -------------------------------------------------------------
+        # Accepted for next validation stage
+        # -------------------------------------------------------------
 
         print(
             f"[{detector_name}][is_face_complete] "
@@ -1147,7 +1203,7 @@ def _mediapipe_landmarks_complete(
         max_misalign = float(
             globals().get(
                 "MEDIAPIPE_MAX_EYE_MISALIGN_RATIO",
-                0.60,
+                0.90,
             )
         )
 
@@ -1158,7 +1214,7 @@ def _mediapipe_landmarks_complete(
                 f"(ratio={misalign_ratio:.3f})"
             )
 
-            return False, detail
+            
 
         # ==============================================================
         # Mouth must be below nose

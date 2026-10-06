@@ -8,7 +8,7 @@ from utils.security import image_hash, safe_disease_slug, save_optimized_image
 from utils.queries import (
     INSERT_SEARCH_HISTORY,
     GET_RECENT_SEARCHES,
-    COUNT_DOCTOR_SEARCHES,
+    COUNT_DOCTOR_SEARCHES_FOR_HISTORY,
     GET_DOCTOR_DISEASE_STATS,
     GET_DOCTOR_SOURCE_STATS,
     GET_DOCTOR_TOP_IMAGES,
@@ -122,7 +122,7 @@ def recent_searches(doctor_pk: int, limit: int = 10, offset: int = 0, disease: s
 
 
 def doctor_search_stats(doctor_pk: int) -> dict:
-    total = fetch_one(COUNT_DOCTOR_SEARCHES, (doctor_pk,))["c"]
+    total = fetch_one(COUNT_DOCTOR_SEARCHES_FOR_HISTORY, (doctor_pk,))["c"]
     diseases = fetch_all(
         GET_DOCTOR_DISEASE_STATS,
         (doctor_pk,),
