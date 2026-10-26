@@ -1,6 +1,7 @@
 import json
 import logging
 import threading
+import traceback
 from pathlib import Path
 
 import numpy as np
@@ -127,6 +128,7 @@ def save_ai_prediction_for_learning(
     confidence: float,
     original_name: str = "",
     doctor_id: int | None = None,
+    pause_training: bool = False,
 ) -> dict:
 
     """Persist only AI-fallback images and queue incremental learning.
@@ -141,6 +143,25 @@ def save_ai_prediction_for_learning(
     Tinea, Vitiligo) are accepted. AI predictions outside this scope are
     rejected to prevent automatic expansion of the prediction classes.
     """
+
+    # Validate AI confidence before saving it to the database.
+    try:
+        confidence = float(confidence)
+    except (TypeError, ValueError, OverflowError):
+        return {
+            "saved": False,
+            "duplicate": False,
+            "path": None,
+            "reason": "invalid_confidence",
+        }
+
+    if not np.isfinite(confidence) or not 0 <= confidence <= 100:
+        return {
+            "saved": False,
+            "duplicate": False,
+            "path": None,
+            "reason": "invalid_confidence",
+        }
 
     # Safety check: only allow supported 4-class diseases for self-learning.
     if disease not in SUPPORTED_CLASSES:
@@ -226,7 +247,8 @@ def save_ai_prediction_for_learning(
         str(saved_path),
         disease_name,
     )
-    start_training_worker()
+    if not pause_training:
+        start_training_worker()
     return {"saved": True, "duplicate": False, "path": str(saved_path), "prediction_id": prediction_id}
 
 
@@ -380,28 +402,33 @@ def _list_replay_samples_balanced(class_names: list[str], replay_samples_per_dis
 
 
 def _run_job(job: dict) -> None:
-    execute(
-        "UPDATE training_queue SET status = 'processing', attempts = attempts + 1, updated_at = ? WHERE id = ?",
-        (utc_now(), job["id"]),
-    )
-    _log("training_started", "started", "Incremental training started (replay).", job["image_path"], job["disease"])
     try:
+        execute(
+            "UPDATE training_queue SET status = 'processing', attempts = attempts + 1, updated_at = ? WHERE id = ?",
+            (utc_now(), job["id"]),
+        )
+        _log("training_started", "started", "Incremental training started (replay).", job["image_path"], job["disease"])
+
+        new_disease = str(job.get("disease") or "").strip()
+
+        # Reject unsupported labels before touching the class mapping.
+        if new_disease not in SUPPORTED_CLASSES:
+            raise ValueError(
+                f"Unsupported disease '{new_disease}'. "
+                f"Allowed classes: {SUPPORTED_CLASSES}"
+            )
+
         class_names = _load_class_names()
-        # Ensure class label exists without reordering existing indices.
-        # Critical: do NOT sort here; incremental training head weight copying
-        # assumes existing class indices remain stable.
-        if job["disease"] not in class_names:
-            class_names.append(job["disease"])
-            _save_class_names(class_names)
 
-        # Runtime sanity checks to prevent silent label-index drift.
-        # If mapping drifts, the model can collapse to a dominant class (e.g., Tinea).
-        if not job.get("disease"):
-            raise ValueError("job.disease is empty")
+        # Preserve the exact supported class order; never expand it here.
+        if class_names != SUPPORTED_CLASSES:
+            raise ValueError(
+                f"Class mapping mismatch: expected {SUPPORTED_CLASSES}, "
+                f"found {class_names}. Training stopped to protect label indices."
+            )
 
-        new_disease = job["disease"]
         if new_disease not in class_names:
-            raise ValueError("New disease not found after class_names update")
+            raise ValueError("Validated disease is missing from class mapping")
 
         # Log current label ordering for debugging.
         _log(
@@ -460,14 +487,35 @@ def _run_job(job: dict) -> None:
             (job["image_path"],),
         )
         _log("training_completed", "completed", "Replay incremental training completed.", job["image_path"], job["disease"], before, after)
-
     except Exception as exc:
+        attempts_used = int(job.get("attempts", 0)) + 1
+        error_details = (
+            f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
+        )
+
+        permanent_failure = (
+            isinstance(exc, ValueError)
+            and (
+                str(exc).startswith("Unsupported disease ")
+                or str(exc).startswith("Class mapping mismatch:")
+                or str(exc) == "Validated disease is missing from class mapping"
+            )
+        )
+
         next_status = "failed"
-        if int(job.get("attempts", 0)) < TRAINING_MAX_ATTEMPTS:
+        if not permanent_failure and attempts_used < TRAINING_MAX_ATTEMPTS:
             next_status = "queued"
+
+        LOGGER.error(
+            "Training job %s failed (attempt %s/%s):\n%s",
+            job["id"],
+            attempts_used,
+            TRAINING_MAX_ATTEMPTS,
+            error_details,
+        )
         execute(
             "UPDATE training_queue SET status = ?, error = ?, updated_at = ? WHERE id = ?",
-            (next_status, str(exc), utc_now(), job["id"]),
+            (next_status, error_details, utc_now(), job["id"]),
         )
         execute(
             """
@@ -477,4 +525,10 @@ def _run_job(job: dict) -> None:
             """,
             (next_status, job["image_path"]),
         )
-        _log("training_failed", "failed", str(exc), job["image_path"], job["disease"])
+        _log(
+            "training_failed",
+            "failed",
+            error_details,
+            job["image_path"],
+            job["disease"],
+        )

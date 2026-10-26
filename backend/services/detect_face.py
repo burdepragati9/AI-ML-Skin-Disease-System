@@ -1213,6 +1213,7 @@ def _mediapipe_landmarks_complete(
                 f"eyes excessively misaligned "
                 f"(ratio={misalign_ratio:.3f})"
             )
+            return False, detail
 
             
 
@@ -2681,6 +2682,13 @@ def _detect_retinaface(
             #
             # Landmark failure does NOT reject the face.
             # ----------------------------------------------------------
+
+            if not landmarks_valid:
+                print(
+                    f"[RetinaFace] face={face_idx} "
+                    "REJECTED for consent: invalid landmarks"
+                )
+                continue
 
             valid_faces.append(
                 {

@@ -2,6 +2,7 @@ from fastapi import APIRouter, UploadFile, File, Depends, Form
 
 from PIL import Image
 
+from training.self_learning import save_ai_prediction_for_learning
 from backend.services.prediction_service import predict_disease
 from backend.services.detect_face import detect_face_details
 from backend.security.dependencies import get_current_user, require_role
@@ -74,6 +75,37 @@ async def predict(
         )
         print(f"[predict] record_search id={search_id} original={file.filename}")
 
+        # Save for self-learning only when doctor consent and eligibility are both true.
+        candidate = result.get("self_learning_candidate") or {}
+
+        if consent_for_training and candidate.get("eligible") is True:
+            try:
+                learning_result = save_ai_prediction_for_learning(
+                    image=image.copy(),
+                    disease=candidate.get("disease"),
+                    confidence=float(candidate.get("confidence") or 0.0),
+                    original_name=filename,
+                    doctor_id=doctor_id,
+                    pause_training=True,
+                )
+
+                print(
+                    f"[self-learning] saved={learning_result.get('saved')} "
+                    f"duplicate={learning_result.get('duplicate')} "
+                    f"reason={learning_result.get('reason', '')}"
+                )
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception(
+                    "[self-learning] Failed to save eligible image."
+                )
+        else:
+            print(
+                f"[self-learning] skipped: consent={consent_for_training}, "
+                f"eligible={candidate.get('eligible', False)}"
+            )
+
+
     # Preserve existing prediction response format.
     return result
 
@@ -85,7 +117,7 @@ async def detect_face_endpoint(
 ):
     """
     Detect if a complete/visible human face is present in the uploaded image using RetinaFace.
-    
+
     This endpoint is called before prediction to determine if the Face Privacy Consent
     popup should be shown to the user. Only complete, clearly visible faces trigger consent.
     """

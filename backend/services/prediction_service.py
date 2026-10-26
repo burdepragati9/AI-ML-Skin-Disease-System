@@ -59,6 +59,42 @@ def predict_disease(image: Image.Image) -> Dict[str, Any]:
         comparison = compare_predictions(model_predictions)
         majority = majority_vote(model_predictions)
         soft = manager.soft_vote(model_predictions)
+        # Self-learning eligibility metadata only.
+        # Does not change the final prediction.
+        probabilities = np.asarray(
+            soft.get("probabilities") or [],
+            dtype=np.float64,
+        )
+
+        probabilities = probabilities[
+            np.isfinite(probabilities) & (probabilities > 0)
+        ]
+
+        if probabilities.size:
+            probabilities = probabilities / probabilities.sum()
+            entropy = float(-np.sum(probabilities * np.log(probabilities)))
+        else:
+            entropy = 0.0
+
+        raw_ml_confidence = soft.get("selected_confidence")
+        try:
+            raw_ml_confidence = float(raw_ml_confidence)
+            valid_ml_confidence = (
+                np.isfinite(raw_ml_confidence)
+                and 0.0 <= raw_ml_confidence <= 100.0
+            )
+        except (TypeError, ValueError, OverflowError):
+            valid_ml_confidence = False
+
+        ml_confidence = (
+            round(raw_ml_confidence, 2)
+            if valid_ml_confidence
+            else None
+        )
+
+        threshold_triggered = (
+            valid_ml_confidence and (ml_confidence < 80.0 or entropy > 0.9)
+        )
 
         # AI verification (enabled via GEMINI_API_KEY/config inside ai_recognition)
         ai_result: Optional[Dict[str, Any]] = verify_multi_model_predictions_with_ai(
@@ -80,6 +116,56 @@ def predict_disease(image: Image.Image) -> Dict[str, Any]:
             soft_vote_result=soft,
             ai_result=ai_result,
         )
+
+        ai_candidate_disease = (
+            ai_result.get("ai_prediction")
+            if isinstance(ai_result, dict)
+            else None
+        )
+
+        ai_candidate_confidence = (
+            ai_result.get("ai_confidence")
+            if isinstance(ai_result, dict)
+            else None
+        )
+
+        try:
+            valid_ai_confidence = (
+                ai_candidate_confidence is not None
+                and np.isfinite(float(ai_candidate_confidence))
+                and 0 <= float(ai_candidate_confidence) <= 100
+            )
+        except (TypeError, ValueError, OverflowError):
+            valid_ai_confidence = False
+
+        self_learning_eligible = (
+            threshold_triggered
+            and ai_candidate_disease in SUPPORTED_CLASSES
+            and valid_ai_confidence
+        )
+
+        LOGGER.warning(
+            "[Self-learning Debug] threshold_triggered=%s, "
+            "ml_confidence=%s, entropy=%s, "
+            "ai_candidate_disease=%s, ai_candidate_confidence=%s",
+            threshold_triggered,
+            ml_confidence,
+            _safe_round(entropy, 4),
+            ai_candidate_disease,
+            ai_candidate_confidence,
+        )
+
+        self_learning_candidate = {
+            "eligible": bool(self_learning_eligible),
+            "disease": ai_candidate_disease,
+            "confidence": (
+                _safe_round(ai_candidate_confidence, 2)
+                if ai_candidate_confidence is not None
+                else 0.0
+            ),
+            "ml_confidence": ml_confidence,
+            "entropy": _safe_round(entropy, 4),
+        }
 
         # Final selection uses ai_verification_summary which already applies override rules.
         predicted_disease = ai_verification_summary.get("final_class") or soft.get(
@@ -144,6 +230,7 @@ def predict_disease(image: Image.Image) -> Dict[str, Any]:
             "comparison": comparison,
             "available_models": available_models,
             "ai_verification": ai_verification_summary,
+            "self_learning_candidate": self_learning_candidate,
         }
 
     except Exception as e:
