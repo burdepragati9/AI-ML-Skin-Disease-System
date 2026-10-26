@@ -84,8 +84,8 @@ export default function ImagePrediction() {
 
   // Ref to prevent duplicate predict button clicks while a run is in progress.
   // We intentionally do NOT track "processed" file ids across runs, because
-  // each Predict click must re-run the full Upload → Face Detection → Consent
-  // → Prediction flow for every selected image. Skipping previously processed
+  // Each Predict click reruns upload, face detection, consent, and prediction.
+  // Previously processed IDs must not prevent result cards from appearing.
   // ids caused missing result cards on retry.
   const predictRunInProgressRef = useRef(false);
 
@@ -192,7 +192,7 @@ export default function ImagePrediction() {
   };
 
   // -------------------------
-  // 🔥 Challenge user for consent via promise-based dialog
+  // Ask for consent using the promise-based dialog.
   // -------------------------
   const updateImageState = (id, patch) => {
     setSelectedFiles((prev) => (
@@ -208,21 +208,23 @@ export default function ImagePrediction() {
     });
   };
 
+
   const handleFaceDetectionProceed = () => {
     setShowFaceDetectionDialog(false);
-    // User clicked Cancel: consent for training is denied.
-    // Disease prediction must still continue, but the image must not
-    // be stored or used for future training.
+
+    // Consent granted: prediction can proceed and
+    // the image may qualify for self-learning.
     if (consentResolveRef.current) {
-      consentResolveRef.current(false);
+      consentResolveRef.current(true);
       consentResolveRef.current = null;
     }
   };
 
   const handleFaceDetectionCancel = () => {
     setShowFaceDetectionDialog(false);
-    // User clicked Cancel: reset loading state and do not call the prediction
-    // API. The prediction flow will detect the false consent value and stop.
+
+    // Consent denied: prediction still proceeds,
+    // but the image must not be used for self-learning.
     if (consentResolveRef.current) {
       consentResolveRef.current(false);
       consentResolveRef.current = null;
@@ -230,7 +232,7 @@ export default function ImagePrediction() {
   };
 
   // -------------------------
-  // 🔥 FIXED API CALL (IMPORTANT)
+  // Prediction API call.
   // -------------------------
   const predictSingleImage = async (fileObj, abortSignal, consent) => {
     const formData = new FormData();
@@ -317,10 +319,10 @@ export default function ImagePrediction() {
           consentForThisImage = await waitForConsent(f.name);
 
           if (!consentForThisImage) {
-            // User clicked Cancel: close popup, reset loading state, and do
-            // NOT call the prediction API for this (or any remaining) image.
+            // Consent denied: prediction must still continue,
+            // but this image must not be used for self-learning.
             updateImageState(f.id, { consent_given: false });
-        
+
           }
         }
         updateImageState(f.id, { consent_given: consentForThisImage });
@@ -445,7 +447,7 @@ export default function ImagePrediction() {
             />
 
             <div className="ipDropInner">
-              <div className="ipDropIcon">📁</div>
+              <div className="ipDropIcon" aria-hidden="true">📁</div>
 
               <div className="ipDropText">
                 <div className="ipDropHeading">Drag & drop your images</div>
